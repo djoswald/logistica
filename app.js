@@ -49,7 +49,6 @@ async function initApp() {
     const isAdm = currentUser.rol === 'admin';
     document.getElementById('btnNavNew').style.display = isAdm ? 'block' : 'none';
     
-    // Cargar lista de conductores antes de los datos
     await cargarListaConductores();
     loadData();
     
@@ -176,7 +175,7 @@ window.editar = (str) => {
     document.getElementById('inpTotalEntregado').value = item.total_kg_entregado;
     document.getElementById('inpTarifa').value = item.tarifa_comision;
     document.getElementById('inpEstado').value = item.estado;
-    document.getElementById('inpObs').value = item.observacion || '';
+    document.getElementById('inpObs').value = item.observacion || item.observaciones || '';
     document.getElementById('fotoActual').value = item.foto || '';
 
     document.getElementById('inpDate').readOnly = !isAdm;
@@ -202,34 +201,41 @@ window.editar = (str) => {
 
 window.prepararTiquete = (str) => {
     const item = JSON.parse(decodeURIComponent(str));
+    
     const listaHtml = item.lista_productos 
         ? item.lista_productos.split('|').map(p => `<div style="margin-bottom:2px;">• ${p.trim()}</div>`).join('')
-        : "<div>Sin productos</div>";
+        : "<div>Sin productos registrados</div>";
+
+    const tarifaVal = item.tarifa_comision || item.tarifa || 0;
+    const obsVal = item.observacion || item.observaciones || "Sin observaciones";
 
     document.getElementById('printArea').innerHTML = `
-        <div style="font-family:monospace; width:280px; color:black; padding:15px; border:1px solid #000; background:white;">
-            <center><h2 style="margin:0;">Agrollanos LOG</h2><p style="margin:5px 0;">ASIGNACION DE CARGA</p></center>
+        <div style="font-family:monospace; width:280px; color:black; padding:15px; border:1px solid #000; background:white; line-height:1.2; font-size:12px;">
+            <center><h2 style="margin:0;">AGROLLANOS LOG</h2><p style="margin:5px 0; font-weight:bold;">ASIGNACIÓN DE CARGA</p></center>
             --------------------------<br>
-            ID: ${item.id}<br>
-            FECHA: ${item.fecha.split('T')[0]}<br>
-            CONDUCTOR: ${item.conductor}<br>
-            CLIENTE: ${item.cliente}<br>
+            <strong>ID:</strong> ${item.id}<br>
+            <strong>FECHA:</strong> ${item.fecha ? item.fecha.split('T')[0] : ''}<br>
+            <strong>CONDUCTOR:</strong> ${item.conductor}<br>
+            <strong>CLIENTE:</strong> ${item.cliente}<br>
             --------------------------<br>
             <strong>PRODUCTOS:</strong><br>${listaHtml}<br>
             --------------------------<br>
-            $ tarifa: $${Number(item.tarifa).toLocaleString()}<br>
-            TOTAL KG: ${item.total_kg_entregado} kg<br>
-            COMISIÓN: $${Number(item.total_comision).toLocaleString()}<br>
+            <strong>TARIFA:</strong> $${Number(tarifaVal).toLocaleString()}<br>
+            <strong>TOTAL KG:</strong> ${item.total_kg_entregado} kg<br>
+            <strong>COMISIÓN:</strong> $${Number(item.total_comision).toLocaleString()}<br>
+            --------------------------<br>
+            <strong>OBSERVACIONES:</strong><br>
+            <div style="font-style:italic; font-size:11px;">${obsVal}</div>
             --------------------------<br><br>
-            <center>_____________________<br>AUTORIZACION DE CARGA</center>
+            <center>_____________________<br>FIRMA AUTORIZADA</center>
         </div>`;
     document.getElementById('printModal').style.display = 'flex';
 };
 
-window.verFoto = (path) => { Swal.fire({ imageUrl: path, imageWidth: 400 }); };
+window.verFoto = (path) => { Swal.fire({ imageUrl: path, imageWidth: 400, title: 'Evidencia de Entrega' }); };
 
 async function borrarRegistro(id) {
-    if ((await Swal.fire({ title: '¿Eliminar?', icon: 'warning', showCancelButton: true })).isConfirmed) {
+    if ((await Swal.fire({ title: '¿Eliminar?', text: 'Esta acción es permanente', icon: 'warning', showCancelButton: true })).isConfirmed) {
         await fetch(`/api/despachos/${id}`, { method: 'DELETE' });
         loadData();
     }
@@ -256,7 +262,7 @@ window.descargarCSV = () => {
     filteredData.forEach(i => csv += `${i.fecha.slice(0,10)};${i.conductor};${i.cliente};${i.total_kg_entregado};${i.total_comision};${i.estado}\n`);
     const link = document.createElement("a");
     link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
-    link.download = "Reporte_SIDMA.csv"; link.click();
+    link.download = "Reporte_Agrollanos.csv"; link.click();
 };
 
 window.logout = () => { localStorage.removeItem('sidma_user'); location.reload(); };
@@ -268,7 +274,7 @@ window.cambiarPagina = (d) => { if(currentPage+d > 0) { currentPage += d; render
 window.cerrarModal = () => document.getElementById('printModal').style.display = 'none';
 window.agregarProducto = () => {
     const d = document.createElement('div'); d.className = 'prod-row';
-    d.innerHTML = `<input type="text" placeholder="Prod" required><input type="number" placeholder="Kg" required><button type="button" onclick="this.parentElement.remove(); calcularTotales()">&times;</button>`;
+    d.innerHTML = `<input type="text" placeholder="Producto" required><input type="number" placeholder="Kg" required><button type="button" onclick="this.parentElement.remove(); calcularTotales()">&times;</button>`;
     document.getElementById('products-container').appendChild(d);
 };
 function actualizarResumen() {
@@ -277,5 +283,9 @@ function actualizarResumen() {
     document.getElementById('sumKg').textContent = tk.toLocaleString();
     document.getElementById('sumMoney').textContent = '$' + tm.toLocaleString();
 }
-
-window.resetForm = () => { document.getElementById('formDespacho').reset(); document.getElementById('inpConductor').disabled = false; document.getElementById('products-container').innerHTML = ''; isEdit = false; };
+window.resetForm = () => { 
+    document.getElementById('formDespacho').reset(); 
+    document.getElementById('inpConductor').disabled = false; 
+    document.getElementById('products-container').innerHTML = ''; 
+    isEdit = false; 
+};
