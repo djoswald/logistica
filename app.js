@@ -208,7 +208,7 @@ window.prepararTiquete = (str) => {
 
     document.getElementById('printArea').innerHTML = `
         <div style="font-family:monospace; width:280px; color:black; padding:15px; border:1px solid #000; background:white;">
-            <center><h2 style="margin:0;">Agrollanos LOG</h2><p style="margin:5px 0;">TIQUETE DE ENTREGA</p></center>
+            <center><h2 style="margin:0;">Agrollanos LOG</h2><p style="margin:5px 0;">ASIGNACION DE CARGA</p></center>
             --------------------------<br>
             ID: ${item.id}<br>
             FECHA: ${item.fecha.split('T')[0]}<br>
@@ -217,10 +217,11 @@ window.prepararTiquete = (str) => {
             --------------------------<br>
             <strong>PRODUCTOS:</strong><br>${listaHtml}<br>
             --------------------------<br>
+            $ tarifa: $${Number(item.tarifa).toLocaleString()}<br>
             TOTAL KG: ${item.total_kg_entregado} kg<br>
             COMISIÓN: $${Number(item.total_comision).toLocaleString()}<br>
             --------------------------<br><br>
-            <center>_____________________<br>Firma Recibido</center>
+            <center>_____________________<br>AUTORIZACION DE CARGA</center>
         </div>`;
     document.getElementById('printModal').style.display = 'flex';
 };
@@ -276,4 +277,5 @@ function actualizarResumen() {
     document.getElementById('sumKg').textContent = tk.toLocaleString();
     document.getElementById('sumMoney').textContent = '$' + tm.toLocaleString();
 }
+
 window.resetForm = () => { document.getElementById('formDespacho').reset(); document.getElementById('inpConductor').disabled = false; document.getElementById('products-container').innerHTML = ''; isEdit = false; };
