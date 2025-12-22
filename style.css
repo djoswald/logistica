@@ -5,7 +5,7 @@
     --text-dim: #94a3b8;
     --green: #10b981;
     --green-dark: #064e3b;
-    --blue: #3b82f6;
+    --blue: #191970;
     --red: #ef4444;
     --orange: #f59e0b;
     --purple: #8b5cf6;
@@ -108,4 +108,5 @@ td { padding: 12px; border-bottom: 1px solid var(--border); }
 
 @media (max-width: 600px) {
     th:nth-child(3), td:nth-child(3) { display: none; } /* Oculta cliente en móvil */
+
 }
