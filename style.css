@@ -8,7 +8,7 @@
     --blue: #48D1CC;
     --red: #ef4444;
     --orange: #f59e0b;
-    --purple: #8b5cf6;
+    --purple: #EE82EE;
     --border: #334155;
 }
 
@@ -110,4 +110,5 @@ td { padding: 12px; border-bottom: 1px solid var(--border); }
     th:nth-child(3), td:nth-child(3) { display: none; } /* Oculta cliente en móvil */
 
 }
+
 
