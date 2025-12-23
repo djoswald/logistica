@@ -1,7 +1,6 @@
 {
-  "name": "sidma-log",
+  "name": "agrollanos-log",
   "version": "1.0.0",
-  "description": "Gestión logística SIDMA",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

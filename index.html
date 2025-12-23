@@ -2,210 +2,209 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Agrollanos LOGÍSTICA | Control de conduc¿tores y carga</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión Logística</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
 
-    <div id="login-screen" class="full-screen">
-        <div class="login-card fade-in">
-            <div class="login-icon"><i class="fa-solid fa-truck-fast"></i></div>
-            <h2>Agrollanos LOG</h2>
-            <p>Acceso al Sistema</p>
+    <!-- LOGIN -->
+    <div id="loginScreen" class="overlay-full">
+        <div class="card login-card">
+            <h1><i class="fa-solid fa-truck-fast"></i></h1>
+            <h2>AGROLLANOS</h2>
             <form id="loginForm">
-                <input type="text" id="user" placeholder="Usuario" required autocomplete="username">
-                <input type="password" id="pass" placeholder="Contraseña" required autocomplete="current-password">
-                <button type="submit" class="btn-main">INGRESAR</button>
+                <input type="text" id="user" placeholder="Usuario" required>
+                <input type="password" id="pass" placeholder="Contraseña" required>
+                <button type="submit" class="btn-primary">INGRESAR</button>
             </form>
         </div>
     </div>
 
-    <div id="app-content" style="display:none;">
-        
-        <div class="user-bar">
-            <div class="user-id">
-                <i class="fa-solid fa-circle-user"></i>
-                <span id="txtUser">Usuario</span>
-                <span id="lblRol" class="user-tag">ROL</span>
+    <!-- APP -->
+    <div id="appLayout" class="app-container" style="display:none;">
+        <header>
+            <div class="brand">
+                <i class="fa-solid fa-truck-ramp-box"></i> AGROLLANOS
             </div>
-            <button onclick="logout()" class="btn-logout" title="Cerrar Sesión">
-                <i class="fa-solid fa-right-from-bracket"></i>
-            </button>
-        </div>
+            <div class="user-info" style="display:flex; gap:10px; align-items:center;">
+                
+                <!-- BOTÓN DE REFRESH -->
+                <button id="btnRefresh" onclick="refreshData()" class="btn-refresh">
+                    <i class="fa-solid fa-rotate-right"></i> <span>Actualizar</span>
+                </button>
 
-        <div class="container">
-            <header class="mobile-header">
-                <div class="brand">
-                    <h1>Agrollanos LOG</h1>
-                    <p id="roleDesc">Gestión Operativa</p>
-                </div>
-                <div class="nav-menu">
-                    <button id="btnNavNew" class="nav-btn" onclick="verTab('form')" title="Nuevo Registro">
-                        <i class="fa-solid fa-plus"></i>
-                    </button>
-                    <button class="nav-btn active" onclick="verTab('list')" title="Historial">
-                        <i class="fa-solid fa-table-list"></i>
-                    </button>
-                </div>
-            </header>
+                <button id="btnOpenHistory" onclick="openHistory()" class="btn-hist">
+                    <i class="fa-solid fa-file-invoice"></i> HISTORIAL
+                </button>
+                <span id="uName">Usuario</span>
+                <span id="uRole" class="badge">ROL</span>
+                <button onclick="logout()" class="btn-logout" style="background:transparent; border:none; color:white;"><i class="fa-solid fa-right-from-bracket"></i></button>
+            </div>
+        </header>
 
-            <div id="view-form" class="card fade-in" style="display:none;">
-                <form id="formDespacho">
-                    <input type="hidden" id="editId">
-                    <input type="hidden" id="fotoActual">
-                    <input type="hidden" id="listaProductosTexto">
+        <main>
+            <!-- VISTA OPERADOR -->
+            <section id="view-operador" class="role-section">
+                <div class="card creation-card">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                        <h3><i class="fa-solid fa-clipboard-check"></i> Gestión de Ruta</h3>
+                        <button id="btnCancelEdit" onclick="cancelEditMode()" class="btn-del small" style="display:none;">CANCELAR EDICIÓN</button>
+                    </div>
                     
-                    <div class="form-grid">
-                        <div class="section-card">
-                            <h3><i class="fa-solid fa-route"></i> Ruta y Conductor</h3>
-                            <div class="input-group">
-                                <label>Fecha de Salida</label>
-                                <input type="date" id="inpDate" required>
-                            </div>
-                            <div class="input-group">
-                                <label>Cliente / Destino</label>
-                                <input type="text" id="inpCliente" required placeholder="Nombre cliente">
-                            </div>
-                            <div class="input-group">
-                                <label>Conductor Asignado</label>
-                                <select id="inpConductor" required>
-                                    <option value="">Cargando conductores...</option>
-                                </select>
-                            </div>
-                            <div class="input-group">
-                                <label>Estado de la Entrega</label>
-                                <select id="inpEstado">
-                                    <option value="En Ruta">🟡 En Ruta</option>
-                                    <option value="Entregado">🟢 Entregado</option>
-                                </select>
-                            </div>
+                    <form id="formCrear">
+                        <input type="hidden" id="editId">
+                        <div class="grid-2">
+                            <div><label>Fecha</label><input type="date" id="cFecha" required></div>
+                            <div><label>Nombre Ruta</label><input type="text" id="cNombre" placeholder="Ej: Ruta Sur" required></div>
                         </div>
-                        
-                        <div class="section-card" id="secCarga">
-                            <h3><i class="fa-solid fa-boxes-stacked"></i> Productos</h3>
-                            <div id="products-container"></div>
-                            <button type="button" id="btnAddProd" onclick="agregarProducto()" class="btn-add-prod">
-                                <i class="fa-solid fa-plus"></i> Agregar Producto
-                            </button>
-                            <div class="resumen-carga">
-                                Salida: <strong id="lblTotalSalida">0 kg</strong>
-                                <input type="hidden" id="inpTotalSalida">
-                            </div>
+                        <div id="clientesContainer"></div>
+                        <div class="action-row">
+                            <button type="button" onclick="addClienteBlock()" class="btn-sec">+ CLIENTE</button>
+                            <div class="total-display">Total: <span id="cTotalKg">0</span> Kg</div>
                         </div>
-
-                        <div class="section-card">
-                            <h3><i class="fa-solid fa-file-invoice-dollar"></i> Cierre</h3>
-                            <div class="input-group highlighted">
-                                <label>KG REALES ENTREGADOS</label>
-                                <input type="number" id="inpTotalEntregado" class="calc big-input" step="any">
-                            </div>
-                            <div class="flex-row">
-                                <div class="input-group" id="secTarifa">
-                                    <label>Tarifa ($)</label>
-                                    <input type="number" id="inpTarifa" class="calc">
-                                </div>
-                                <div class="input-group">
-                                    <label>Diferencia</label>
-                                    <input type="text" id="outDevolucion" readonly>
-                                </div>
-                            </div>
-                            <div class="totals-box" id="secComision">
-                                <p>Comisión Ganada</p>
-                                <div class="total-final" id="outComision">$0</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="input-group full">
                         <label>Observaciones</label>
-                        <textarea id="inpObs" rows="2"></textarea>
-                    </div>
+                        <textarea id="cObs" rows="2" style="background:#334155; color:white; border:1px solid #475569; width:100%; border-radius:5px;" placeholder="Detalles importantes de la ruta..."></textarea>
 
-                    <div class="input-group full">
-                        <label>Foto Evidencia</label>
-                        <input type="file" id="inpFoto" capture="environment" accept="image/*">
-                    </div>
+                        <button type="submit" id="btnSubmitOperador" class="btn-primary big-btn">GUARDAR Y CREAR RUTA</button>
+                    </form>
+                </div>
 
-                    <button type="submit" class="btn-main">GUARDAR Y/O ACTULIZAR CAMBIOS</button>
-                    <button type="button" class="btn-cancel" onclick="verTab('list')">VOLVER AL LISTADO</button>
-                </form>
+                <h3><i class="fa-solid fa-clock-rotate-left"></i> Rutas Pendientes</h3>
+                <div id="listCreadas" class="cards-grid"></div>
+            </section>
+
+            <!-- VISTA ADMIN -->
+            <section id="view-admin" class="role-section">
+                <div class="header-row" style="margin-bottom:15px; display:flex; justify-content:space-between;">
+                    <h3>Pendientes de Asignar</h3>
+                    <button onclick="loadData()" class="btn-sec">Actualizar</button>
+                </div>
+                <div id="listPorAsignar" class="cards-grid"></div>
+
+                <h3 style="margin-top:30px; opacity:0.7">Asignadas (En Tránsito)</h3>
+                <div id="listAsignadas" class="cards-grid"></div>
+            </section>
+
+            <!-- VISTA CONDUCTOR -->
+            <section id="view-conductor" class="role-section">
+                <h3>Mis Rutas Activas</h3>
+                <div id="listMisRutas" class="cards-grid"></div>
+            </section>
+        </main>
+    </div>
+
+    <!-- MODAL HISTORIAL GLOBAL -->
+    <div id="modalHistory" class="modal-overlay">
+        <div class="modal-box modal-wide">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h3><i class="fa-solid fa-box-archive"></i> Historial de Rutas Finalizadas</h3>
+                <button onclick="closeModal('modalHistory')" class="btn-del small">X</button>
+            </div>
+            
+            <div class="card" style="margin-top:10px; padding:10px;">
+                <div class="grid-2">
+                    <div><label>Fecha Inicio</label><input type="date" id="histIni"></div>
+                    <div><label>Fecha Fin</label><input type="date" id="histFin"></div>
+                </div>
+                <div class="grid-2">
+                    <div><label>Placa Vehículo</label><select id="histPlaca"><option value="">Todas</option></select></div>
+                    <div><label>Conductor</label><select id="histCond"><option value="">Todos</option></select></div>
+                </div>
+                
+                <div style="display:flex; gap:10px; margin-top:10px;">
+                    <button onclick="renderHistoryTable()" class="btn-primary small">FILTRAR DATOS</button>
+                    <button onclick="exportHistoryCSV()" class="btn-sec small" style="color:var(--green); border-color:var(--green);">
+                        <i class="fa-solid fa-file-excel"></i> EXPORTAR CSV
+                    </button>
+                </div>
             </div>
 
-            <div id="view-list" class="card fade-in">
-                <div class="filter-zone">
-                    <div class="filter-row">
-                        <div class="filter-item">
-                            <label>Desde:</label>
-                            <input type="date" id="filtroInicio" onchange="aplicarFiltros()">
-                        </div>
-                        <div class="filter-item">
-                            <label>Hasta:</label>
-                            <input type="date" id="filtroFin" onchange="aplicarFiltros()">
-                        </div>
-                        <div class="filter-item">
-                            <label>Estatus:</label>
-                            <select id="filtroEstado" onchange="aplicarFiltros()">
-                                <option value="">TODOS</option>
-                                <option value="En Ruta">En Ruta</option>
-                                <option value="Entregado">Entregado</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="search-box">
-                        <input type="text" id="filtroTexto" placeholder="🔍 Buscar por cliente o conductor..." onkeyup="aplicarFiltros()">
-                        <button onclick="descargarCSV()" class="btn-icon btn-green" title="Excel Latin"><i class="fa-solid fa-file-csv"></i></button>
-                    </div>
-                </div>
+            <div class="hist-summary">
+                <div>Rutas: <strong id="hCount">0</strong></div>
+                <div>Kg Entregados: <strong id="hKg">0</strong></div>
+                <div>Comisión Total: <strong id="hComision">$0</strong></div>
+            </div>
 
-                <div class="group-section">
-                    <h3>📦 VIAJES ASIGNADOS / EN RUTA</h3>
-                    <div class="table-responsive">
-                        <table>
-                            <thead><tr><th>Fecha</th><th>Conductor</th><th>Cliente</th><th>Kg</th><th class="adm-only">Pago</th><th>Acciones</th></tr></thead>
-                            <tbody id="tablaPendientes"></tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <div class="group-section" style="margin-top:20px;">
-                    <h3>✅ ENTREGADOS / FINALIZADOS</h3>
-                    <div class="table-responsive">
-                        <table>
-                            <thead><tr><th>Fecha</th><th>Conductor</th><th>Cliente</th><th>Kg</th><th class="adm-only">Pago</th><th>Acciones</th></tr></thead>
-                            <tbody id="tablaFinalizados"></tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <div class="pagination">
-                    <button onclick="cambiarPagina(-1)">Anterior</button>
-                    <span id="pageInfo">Página 1</span>
-                    <button onclick="cambiarPagina(1)">Siguiente</button>
-                </div>
-
-                <div class="summary-footer">
-                    <div class="sum-box">Viajes: <strong id="sumCount">0</strong></div>
-                    <div class="sum-box">Kilos: <strong id="sumKg">0</strong></div>
-                    <div class="sum-box">Comisión: <strong id="sumMoney">$0</strong></div>
-                </div>
+            <div class="hist-table-wrap">
+                <table class="hist-table" id="tableHistory">
+                    <thead>
+                        <tr>
+                            <th>FECHA</th>
+                            <th>PLACA</th>
+                            <th>CONDUCTOR</th>
+                            <th>KG ENTREGADOS</th>
+                            <th>TARIFA</th>
+                            <th>COMISIÓN</th>
+                            <th>TIQUETE</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
             </div>
         </div>
     </div>
 
-    <div id="printModal" class="modal-overlay">
-        <div class="modal-content">
-            <div id="printArea" class="print-preview-area"></div>
+    <!-- MODAL ASIGNAR (ACTUALIZADO CON INFO DE RUTA) -->
+    <div id="modalAsignar" class="modal-overlay">
+        <div class="modal-box">
+            <h3>Asignar Recursos</h3>
+            
+            <!-- NUEVA SECCIÓN: RESUMEN DE RUTA Y OBSERVACIONES -->
+            <div id="asgResumen" style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 3px solid #f59e0b; font-size: 0.9rem; color: #cbd5e1;">
+                <!-- Aquí se inyecta la info dinámica desde JS -->
+            </div>
+
+            <input type="hidden" id="asgId">
+            <label>Vehículo</label><select id="asgPlaca"></select>
+            <label>Conductor</label><select id="asgConductor"></select>
+            <div class="grid-2">
+                <div><label>Tipo Pago</label><select id="asgTipo"><option value="variable">Por Kg</option><option value="fija">Fijo</option></select></div>
+                <div><label>Valor ($)</label><input type="number" id="asgValor" placeholder="0"></div>
+            </div>
             <div class="modal-footer">
-                <button onclick="window.print()" class="btn-print-now"><i class="fa-solid fa-print"></i> IMPRIMIR</button>
-                <button onclick="cerrarModal()" class="btn-close-modal">CERRAR</button>
+                <button onclick="closeModal('modalAsignar')" class="btn-sec">Cancelar</button>
+                <button onclick="submitAsignar()" class="btn-primary">CONFIRMAR</button>
             </div>
         </div>
     </div>
+
+    <div id="modalFinalizar" class="modal-overlay">
+        <div class="modal-box">
+            <h3>Finalizar Entrega</h3>
+            <input type="hidden" id="finId">
+            <p style="color:#f59e0b; font-size:0.9rem;">Marca solo lo <strong>DEVUELTO</strong>:</p>
+            <div id="checklistProds" style="border:1px solid #334155; padding:10px; border-radius:5px; max-height:150px; overflow-y:auto; margin-bottom:10px;"></div>
+            <div style="background:rgba(16,185,129,0.1); padding:10px; border-radius:5px; margin-bottom:10px;">
+                <div>Kg Entregados: <strong id="finKg">0</strong></div>
+                <div>Comisión Base: <strong id="finBase">$0</strong></div>
+            </div>
+            <label>Gastos Adicionales</label><div id="gastosContainer"></div>
+            <button onclick="addGastoRow()" class="btn-sec small">+ Gasto</button>
+            <div class="total-final" style="text-align:right; font-size:1.5rem; color:#10b981; font-weight:bold; margin:15px 0;">TOTAL: <span id="finTotal">$0</span></div>
+            <label>Foto Evidencia</label><input type="file" id="finFoto" capture="environment">
+            <div class="modal-footer">
+                <button onclick="closeModal('modalFinalizar')" class="btn-sec">Volver</button>
+                <button onclick="submitFinalizar()" class="btn-primary">CERRAR RUTA</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalTicket" class="modal-overlay">
+        <div class="modal-box" style="width: auto; max-width: 400px;">
+            <h3 style="text-align:center;">Vista Previa</h3>
+            <div id="ticketPreviewContent" class="ticket-preview-box"></div>
+            <div class="modal-footer" style="justify-content: center; gap: 10px;">
+                <button onclick="closeModal('modalTicket')" class="btn-sec">Cerrar</button>
+                <button onclick="printNow()" class="btn-primary" style="background:white; color:black; border:1px solid black;">🖨️ IMPRIMIR</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="printArea"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="app.js"></script>
 </body>
-
 </html>
