@@ -15,22 +15,16 @@ const fmtDate = (iso) => { if(!iso) return ''; if(iso.includes('-') && !iso.incl
 const fmtTime = (raw) => { if(!raw) return ''; if(raw.includes('T')) { try{return new Date(raw).toLocaleTimeString('en-GB',{timeZone:TIMEZONE,hour:'2-digit',minute:'2-digit'});}catch{return raw.substring(0,5);} } return raw.length>5?raw.substring(0,5):raw; };
 const getBogotaDateISO = () => { const d = new Date(new Date().toLocaleString("en-US", {timeZone: TIMEZONE})); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
 
-// NUEVO: Normalizador de fechas para filtros (Maneja ISO, Texto y Fechas de Excel)
+// Normalizador de fechas
 const parseDateStr = (dateStr) => {
     if (!dateStr) return '0000-00-00';
-    // Si ya viene como YYYY-MM-DD (ISO simple), devolverlo
     if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) return dateStr;
-    // Si viene como ISO completo (YYYY-MM-DDTHH:mm...)
     if (dateStr.includes('T')) return dateStr.split('T')[0];
-    // Si viene como DD/MM/YYYY (común en Sheets)
     if (dateStr.includes('/')) {
         const parts = dateStr.split('/');
-        if (parts.length === 3) {
-            // Asumimos DD/MM/YYYY
-            return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
-        }
+        if (parts.length === 3) return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
     }
-    return dateStr; // Retorno por defecto
+    return dateStr;
 };
 
 document.addEventListener('DOMContentLoaded', () => { if(!user) document.getElementById('loginScreen').style.display = 'flex'; else initApp(); });
@@ -102,7 +96,7 @@ window.renderOperador = () => {
 window.borrarPedido = async (id) => { if((await Swal.fire({title:'¿Borrar Pedido?', icon:'warning', showCancelButton:true})).isConfirmed) { await fetch(`/api/pedidos/${id}`, {method:'DELETE'}); loadData(); } };
 
 // ==========================================
-// MÓDULO ADMIN: ARMAR RUTAS
+// MÓDULO ADMIN
 // ==========================================
 window.renderAdmin = () => {
     const actives = document.getElementById('listRutasActivas'); actives.innerHTML = '';
@@ -153,20 +147,78 @@ window.borrarRuta = async (id) => { if((await Swal.fire({title:'¿Borrar Ruta?',
 // CONDUCTOR Y COMUNES
 window.renderConductor = () => { const l = rawDespachos.filter(x => x.conductor_asignado === user.nombre && x.estado === 'Asignada'); const c = document.getElementById('listMisRutas'); c.innerHTML = ''; l.forEach(r => { let details = ''; r.detalles.forEach(d => details += `<li>${d.cliente} (Ord: ${d.orden || 'S/N'})</li>`); c.innerHTML += `<div class="card item-card status-asignada"><h3>${r.nombre_ruta}</h3><p><i class="fa-solid fa-truck"></i> ${r.placa_vehiculo} | <strong>${fmtNum.format(r.total_kg_ruta)} Kg</strong></p><ul style="font-size:0.8rem; color:#ccc; padding-left:20px">${details}</ul><div class="grid-2 mt"><button onclick="openTicket('${r.id}')" class="btn-sec">🖨️ Ver Tiquete</button><button onclick="openFin('${r.id}')" class="btn-primary">ENTREGAR / FINALIZAR</button></div></div>`; }); };
 window.openFin = (id) => { const r = rawDespachos.find(x => x.id == id); document.getElementById('finId').value = id; const b = document.getElementById('checklistProds'); b.innerHTML = ''; r.detalles.forEach((c,ic) => { let h = `<div class="check-group"><div style="font-weight:bold; color:var(--orange); display:flex; justify-content:space-between;"><span>${c.cliente}</span> <span>Ord: ${c.orden||'--'}</span></div>`; c.productos.forEach((p,ip) => { h += `<div class="check-item-cond"><div style="flex:2">${p.producto}</div><div style="flex:1; text-align:right; font-size:0.8rem; color:#aaa;">Plan: ${fmtNum.format(p.kg_plan)}Kg</div><div style="flex:1; text-align:right;"><input type="number" class="kg-ent-input" data-ic="${ic}" data-ip="${ip}" data-plan="${p.kg_plan}" value="${p.kg_plan}" oninput="recalc()"></div></div>`; }); b.innerHTML += h + '</div>'; }); document.getElementById('gastosContainer').innerHTML=''; recalc(); document.getElementById('modalFinalizar').style.display='flex'; };
-window.recalc = () => { const r = rawDespachos.find(x => x.id == document.getElementById('finId').value); let kgEntregadosTotal = 0; document.querySelectorAll('.kg-ent-input').forEach(inp => { kgEntregadosTotal += parseFloat(inp.value) || 0; }); const tar = parseFloat(r.valor_tarifa)||0; let base = (r.tipo_comision === 'variable') ? (kgEntregadosTotal * tar) : tar; let g = 0; document.querySelectorAll('.g-val').forEach(i => g += parseFloat(i.value)||0); document.getElementById('finKg').innerText = fmtNum.format(kgEntregadosTotal); document.getElementById('finBase').innerText = fmtMoney.format(base); document.getElementById('finTotal').innerText = fmtMoney.format(base+g); };
-window.addGastoRow = () => { const d = document.createElement('div'); d.className='grid-2 mini-grid'; d.innerHTML = `<input type="text" class="g-desc" placeholder="Desc."><input type="number" class="g-val" placeholder="$" oninput="recalc()">`; document.getElementById('gastosContainer').appendChild(d); };
-window.submitFinalizar = async() => { const id = document.getElementById('finId').value; const r = rawDespachos.find(x => x.id == id); document.querySelectorAll('.kg-ent-input').forEach(inp => { const ic = inp.dataset.ic; const ip = inp.dataset.ip; const real = parseFloat(inp.value) || 0; const plan = parseFloat(inp.dataset.plan) || 0; let status = 'Entregado'; if(real === 0) status = 'Devuelto'; else if(real < plan) status = 'Parcial'; else if(real > plan) status = 'Excedente'; r.detalles[ic].productos[ip].kg_ent = real; r.detalles[ic].productos[ip].estado = status; }); const g = []; document.querySelectorAll('#gastosContainer .grid-2').forEach(e => g.push({desc:e.querySelector('.g-desc').value, val:e.querySelector('.g-val').value})); const totalPagarRaw = document.getElementById('finTotal').innerText.replace(/[$.]/g,'').replace(',','.'); const totalKgRealRaw = document.getElementById('finKg').innerText.replace(/\./g,'').replace(',','.'); const fd = new FormData(); fd.append('detalles_actualizados', JSON.stringify(r.detalles)); fd.append('gastos_json', JSON.stringify(g)); fd.append('total_pagar', totalPagarRaw); fd.append('total_kg_real', totalKgRealRaw); if(document.getElementById('finFoto').files[0]) { fd.append('foto', document.getElementById('finFoto').files[0]); } Swal.fire({title:'Finalizando Ruta', didOpen:()=>Swal.showLoading()}); await fetch(`/api/finalizar/${id}`, {method:'PUT', body:fd}); document.getElementById('modalFinalizar').style.display='none'; loadData(); Swal.fire('Ruta Finalizada','','success'); };
 
-// HISTORIAL MEJORADO
+// FUNCIÓN CLAVE: Recalcula en tiempo real en el modal
+window.recalc = () => { 
+    const r = rawDespachos.find(x => x.id == document.getElementById('finId').value); 
+    let kgEntregadosTotal = 0; 
+    document.querySelectorAll('.kg-ent-input').forEach(inp => { kgEntregadosTotal += parseFloat(inp.value) || 0; }); 
+    const tar = parseFloat(r.valor_tarifa)||0; 
+    let base = (r.tipo_comision === 'variable') ? (kgEntregadosTotal * tar) : tar; 
+    let g = 0; 
+    document.querySelectorAll('.g-val').forEach(i => g += parseFloat(i.value)||0); 
+    document.getElementById('finKg').innerText = fmtNum.format(kgEntregadosTotal); 
+    document.getElementById('finBase').innerText = fmtMoney.format(base); 
+    document.getElementById('finTotal').innerText = fmtMoney.format(base+g); 
+};
+
+window.addGastoRow = () => { const d = document.createElement('div'); d.className='grid-2 mini-grid'; d.innerHTML = `<input type="text" class="g-desc" placeholder="Desc."><input type="number" class="g-val" placeholder="$" oninput="recalc()">`; document.getElementById('gastosContainer').appendChild(d); };
+
+// FUNCIÓN CORREGIDA: Envía el campo correcto al backend
+window.submitFinalizar = async() => { 
+    const id = document.getElementById('finId').value; 
+    const r = rawDespachos.find(x => x.id == id); 
+    
+    // Actualizar estados locales de productos
+    document.querySelectorAll('.kg-ent-input').forEach(inp => { 
+        const ic = inp.dataset.ic; 
+        const ip = inp.dataset.ip; 
+        const real = parseFloat(inp.value) || 0; 
+        const plan = parseFloat(inp.dataset.plan) || 0; 
+        let status = 'Entregado'; 
+        if(real === 0) status = 'Devuelto'; 
+        else if(real < plan) status = 'Parcial'; 
+        else if(real > plan) status = 'Excedente'; 
+        r.detalles[ic].productos[ip].kg_ent = real; 
+        r.detalles[ic].productos[ip].estado = status; 
+    }); 
+
+    const g = []; 
+    document.querySelectorAll('#gastosContainer .grid-2').forEach(e => g.push({desc:e.querySelector('.g-desc').value, val:e.querySelector('.g-val').value})); 
+    
+    // Preparar valores para envío
+    const totalPagarRaw = document.getElementById('finTotal').innerText.replace(/[$.]/g,'').replace(',','.'); 
+    const totalKgRealRaw = document.getElementById('finKg').innerText.replace(/\./g,'').replace(',','.'); 
+    
+    const fd = new FormData(); 
+    fd.append('detalles_actualizados', JSON.stringify(r.detalles)); 
+    fd.append('gastos_json', JSON.stringify(g)); 
+    fd.append('total_pagar', totalPagarRaw); 
+    
+    // CAMBIO IMPORTANTE: Usar la clave exacta que espera el servidor
+    fd.append('total_kg_entregados_real', totalKgRealRaw); 
+    
+    if(document.getElementById('finFoto').files[0]) { fd.append('foto', document.getElementById('finFoto').files[0]); } 
+    
+    Swal.fire({title:'Finalizando Ruta', didOpen:()=>Swal.showLoading()}); 
+    await fetch(`/api/finalizar/${id}`, {method:'PUT', body:fd}); 
+    document.getElementById('modalFinalizar').style.display='none'; 
+    loadData(); 
+    Swal.fire('Ruta Finalizada','','success'); 
+};
+
+// HISTORIAL
 window.openHistory = async () => { 
     Swal.fire({title:'Cargando...', didOpen:()=>Swal.showLoading()}); 
     try { 
         const res = await fetch('/api/historial'); 
         const archivadas = await res.json(); 
         historyData = archivadas.map(processRow); 
+        
         const isoStart = getBogotaDateISO().substring(0, 8) + '01'; 
         document.getElementById('histIni').value = isoStart; 
         document.getElementById('histFin').value = getBogotaDateISO(); 
+        
         const sp = document.getElementById('histPlaca'); sp.innerHTML = '<option value="">Todas</option>'; vehiculosList.forEach(v => sp.innerHTML += `<option value="${v.placa}">${v.placa}</option>`); 
         const sc = document.getElementById('histCond'); sc.innerHTML = '<option value="">Todos</option>'; conductoresList.forEach(c => sc.innerHTML += `<option value="${c.nombre}">${c.nombre}</option>`); 
         if(user.rol === 'conductor') { sc.value = user.nombre; sc.disabled = true; } else { sc.disabled = false; } 
@@ -183,8 +235,7 @@ window.renderHistoryTable = () => {
     const cFilter = (user.rol === 'conductor') ? user.nombre : document.getElementById('histCond').value; 
     
     const filtrados = historyData.filter(r => { 
-        // USAR EL NORMALIZADOR DE FECHA
-        const d = parseDateStr(r.fecha_entrega);
+        const d = parseDateStr(r.fecha_entrega || r.fecha || '');
         const inDate = (!ini || d >= ini) && (!fin || d <= fin); 
         const inPlaca = !pFilter || r.placa_vehiculo === pFilter; 
         const inCond = !cFilter || r.conductor_asignado === cFilter; 
@@ -199,7 +250,9 @@ window.renderHistoryTable = () => {
         const comision = (r.tipo_comision === 'variable') ? (kgReal * tarifa) : tarifa; 
         tKg += kgReal; tCom += comision; 
         const btnFoto = r.evidencia_foto ? `<button onclick="verFoto('${r.evidencia_foto}')" class="btn-sec small" title="Ver Foto">📷</button>` : ''; 
-        tbody.innerHTML += `<tr><td>${fmtDate(r.fecha_entrega)}<br><small>${r.nombre_ruta}</small></td><td>${r.placa_vehiculo}</td><td>${r.conductor_asignado}</td><td>${fmtNum.format(kgReal)}</td><td>${fmtMoney.format(tarifa)}</td><td>${fmtMoney.format(comision)}</td><td style="display:flex; justify-content:center; gap:5px;">${btnFoto}<button onclick="openTicket('${r.id}')" class="btn-sec small">🖨️</button></td></tr>`; 
+        const fechaMostrar = r.fecha_entrega ? fmtDate(r.fecha_entrega) : '<span style="color:#666;font-size:0.8em">S/F</span>';
+
+        tbody.innerHTML += `<tr><td>${fechaMostrar}<br><small>${r.nombre_ruta}</small></td><td>${r.placa_vehiculo}</td><td>${r.conductor_asignado}</td><td>${fmtNum.format(kgReal)}</td><td>${fmtMoney.format(tarifa)}</td><td>${fmtMoney.format(comision)}</td><td style="display:flex; justify-content:center; gap:5px;">${btnFoto}<button onclick="openTicket('${r.id}')" class="btn-sec small">🖨️</button></td></tr>`; 
     }); 
     document.getElementById('hCount').textContent = filtrados.length; 
     document.getElementById('hKg').textContent = fmtNum.format(tKg); 
@@ -208,6 +261,6 @@ window.renderHistoryTable = () => {
 };
 
 window.exportHistoryCSV = () => { const dataToExport = window.currentHistoryFiltered || historyData; let csv = "\uFEFFFECHA;RUTA;PLACA;CONDUCTOR;KG REALES;TARIFA;COMISION;GASTOS ADICIONALES;PAGO TOTAL\n"; dataToExport.forEach(r => { const kgReal = parseFloat(r.total_kg_entregados_real) || 0; const tarifa = parseFloat(r.valor_tarifa)||0; const comision = (r.tipo_comision === 'variable') ? (kgReal * tarifa) : tarifa; let gastosStr = "Sin Gastos"; if(r.gastos && r.gastos.length > 0) { gastosStr = r.gastos.map(g => `${g.desc}: $${g.val}`).join(' | '); } csv += `${r.fecha_entrega.slice(0,10)};${r.nombre_ruta};${r.placa_vehiculo};${r.conductor_asignado};${kgReal};${tarifa};${comision};${gastosStr};${r.total_pagar_conductor}\n`; }); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8;'})); a.download = `Historial.csv`; a.click(); };
-window.generateTicketHTML = (r) => { let listHTML = ''; r.detalles.forEach(c => { listHTML += `<div style="margin-top:8px; font-weight:bold; border-bottom:1px solid #000; font-size:12px; display:flex; justify-content:space-between;"><span>${c.cliente.toUpperCase()}</span> <span>Ord: ${c.orden||'--'}</span></div>`; c.productos.forEach(p => { const kgPlan = parseFloat(p.kg_plan) || 0; const kgEnt = (p.kg_ent !== undefined) ? parseFloat(p.kg_ent) : kgPlan; let statusTag = ''; if(kgEnt === 0) statusTag = '<span class="t-tag-dev">[DEVUELTO]</span>'; else if(kgEnt < kgPlan) statusTag = '<span class="t-tag-dev">[PARCIAL]</span>'; const style = (kgEnt === 0) ? 't-devuelto' : ''; listHTML += `<div class="t-row ${style}" style="font-size:11px; padding-left:5px"><span style="flex:2">- ${p.producto} ${statusTag}</span><span style="font-weight:bold">${fmtNum.format(kgEnt)} / ${fmtNum.format(kgPlan)} Kg</span></div>`; }); }); let gastosHTML = ''; let gastosTotal = 0; if(r.gastos && r.gastos.length) { gastosHTML = `<div class="t-divider"></div><div class="t-bold" style="margin-top:5px">GASTOS ADICIONALES:</div>`; r.gastos.forEach(g => { gastosHTML += `<div class="t-row"><span>${g.desc}</span><span>${fmtMoney.format(g.val)}</span></div>`; gastosTotal += Number(g.val); }); } const kgRealTotal = parseFloat(r.total_kg_entregados_real) || r.total_kg_ruta; const tarifaVal = Number(r.valor_tarifa || 0); let comisionVal = (r.tipo_comision === 'variable') ? (kgRealTotal * tarifaVal) : tarifaVal; const totalPagar = r.estado === 'Finalizada' ? Number(r.total_pagar_conductor) : (comisionVal + gastosTotal); const obsText = r.observaciones ? r.observaciones : ''; const obsHTML = obsText ? `<div style="margin-top:15px; border:1px dashed #000; padding:5px; font-size:11px; background:#eee;"><strong>OBSERVACIONES:</strong><br>${obsText}</div>` : ''; const h = fmtTime(r.hora_entrega) || ''; return `<div class="t-header"><h2 style="margin:0; font-size:12px">🌾LOGISTICA "AGROLLANOS"</h2><p style="margin:2px 0"> NIT: 830104572.</p><p style="font-weight:bold; font-size:14px; margin-top:5px">MANIFIESTO DE CARGA #${r.id.toString().slice(-4)}</p></div><div style="font-size:12px; margin-bottom:10px;"><div class="t-row"><span>Ruta:</span><strong>${r.nombre_ruta}</strong></div><div class="t-row"><span>Fecha:</span><span>${fmtDate(r.fecha_entrega)} ${h}</span></div><div class="t-row"><span>Vehículo:</span><span>${r.placa_vehiculo||'---'}</span></div><div class="t-row"><span>Conductor:</span><span>${r.conductor_asignado||'---'}</span></div></div><div class="t-divider"></div><div style="text-align:center;font-weight:bold; margin:5px 0;">DETALLE DE CARGA</div>${listHTML}<div class="t-divider"></div><div class="t-row" style="font-size:13px; margin-top:5px;"><strong>TOTAL ENTREGADO:</strong><strong>${fmtNum.format(kgRealTotal)} Kg</strong></div><div class="t-divider"></div><div class="t-row"><span>Tarifa (${r.tipo_comision||'-'}):</span><span>${fmtMoney.format(tarifaVal)}</span></div><div class="t-row"><span>Comisión Base:</span><span>${fmtMoney.format(comisionVal)}</span></div>${gastosHTML}<div class="t-divider"></div><div class="t-row" style="font-size:15px; margin-top:5px"><strong>TOTAL A PAGAR:</strong><strong>${fmtMoney.format(totalPagar)}</strong></div>${obsHTML}<br><br><div style="text-align:center; font-size:10px; color:#555">Enrutado por el SidmaLog Agrollanos| ${new Date().toLocaleString(LOCALE, { timeZone: TIMEZONE })}</div>`; };
+window.generateTicketHTML = (r) => { let listHTML = ''; r.detalles.forEach(c => { listHTML += `<div style="margin-top:8px; font-weight:bold; border-bottom:1px solid #000; font-size:12px; display:flex; justify-content:space-between;"><span>${c.cliente.toUpperCase()}</span> <span>Ord: ${c.orden||'--'}</span></div>`; c.productos.forEach(p => { const kgPlan = parseFloat(p.kg_plan) || 0; const kgEnt = (p.kg_ent !== undefined) ? parseFloat(p.kg_ent) : kgPlan; let statusTag = ''; if(kgEnt === 0) statusTag = '<span class="t-tag-dev">[DEVUELTO]</span>'; else if(kgEnt < kgPlan) statusTag = '<span class="t-tag-dev">[PARCIAL]</span>'; const style = (kgEnt === 0) ? 't-devuelto' : ''; listHTML += `<div class="t-row ${style}" style="font-size:11px; padding-left:5px"><span style="flex:2">- ${p.producto} ${statusTag}</span><span style="font-weight:bold">${fmtNum.format(kgEnt)} / ${fmtNum.format(kgPlan)} Kg</span></div>`; }); }); let gastosHTML = ''; let gastosTotal = 0; if(r.gastos && r.gastos.length) { gastosHTML = `<div class="t-divider"></div><div class="t-bold" style="margin-top:5px">GASTOS ADICIONALES:</div>`; r.gastos.forEach(g => { gastosHTML += `<div class="t-row"><span>${g.desc}</span><span>${fmtMoney.format(g.val)}</span></div>`; gastosTotal += Number(g.val); }); } const kgRealTotal = parseFloat(r.total_kg_entregados_real) || r.total_kg_ruta; const tarifaVal = Number(r.valor_tarifa || 0); let comisionVal = (r.tipo_comision === 'variable') ? (kgRealTotal * tarifaVal) : tarifaVal; const totalPagar = r.estado === 'Finalizada' ? Number(r.total_pagar_conductor) : (comisionVal + gastosTotal); const obsText = r.observaciones ? r.observaciones : ''; const obsHTML = obsText ? `<div style="margin-top:15px; border:1px dashed #000; padding:5px; font-size:11px; background:#eee;"><strong>OBSERVACIONES:</strong><br>${obsText}</div>` : ''; const h = fmtTime(r.hora_entrega) || ''; return `<div class="t-header"><h2 style="margin:0; font-size:18px">AGROLLANOS LOG</h2><p style="margin:2px 0">NIT: 900.XXX.XXX</p><p style="font-weight:bold; font-size:14px; margin-top:5px">MANIFIESTO DE CARGA #${r.id.toString().slice(-4)}</p></div><div style="font-size:12px; margin-bottom:10px;"><div class="t-row"><span>Ruta:</span><strong>${r.nombre_ruta}</strong></div><div class="t-row"><span>Fecha:</span><span>${fmtDate(r.fecha_entrega)} ${h}</span></div><div class="t-row"><span>Vehículo:</span><span>${r.placa_vehiculo||'---'}</span></div><div class="t-row"><span>Conductor:</span><span>${r.conductor_asignado||'---'}</span></div></div><div class="t-divider"></div><div style="text-align:center;font-weight:bold; margin:5px 0;">DETALLE DE CARGA</div>${listHTML}<div class="t-divider"></div><div class="t-row" style="font-size:13px; margin-top:5px;"><strong>TOTAL ENTREGADO:</strong><strong>${fmtNum.format(kgRealTotal)} Kg</strong></div><div class="t-divider"></div><div class="t-row"><span>Tarifa (${r.tipo_comision||'-'}):</span><span>${fmtMoney.format(tarifaVal)}</span></div><div class="t-row"><span>Comisión Base:</span><span>${fmtMoney.format(comisionVal)}</span></div>${gastosHTML}<div class="t-divider"></div><div class="t-row" style="font-size:15px; margin-top:5px"><strong>TOTAL A PAGAR:</strong><strong>${fmtMoney.format(totalPagar)}</strong></div>${obsHTML}<br><br><div style="text-align:center; font-size:10px; color:#555">Generado por SIDMA LOG | ${new Date().toLocaleString(LOCALE, { timeZone: TIMEZONE })}</div>`; };
 window.openTicket = (id) => { const r = rawDespachos.find(x => x.id == id) || historyData.find(x => x.id == id); const h = generateTicketHTML(r); document.getElementById('ticketPreviewContent').innerHTML = h; document.getElementById('printArea').innerHTML = h; document.getElementById('modalTicket').style.display = 'flex'; };
 window.printNow = () => window.print(); window.closeModal = (id) => document.getElementById(id).style.display='none'; window.logout = () => { localStorage.removeItem('sidma_user'); location.reload(); }; window.verFoto = (url) => { Swal.fire({imageUrl: url, imageAlt: 'Evidencia', width: 600, showConfirmButton: false, background: '#1e293b', color: '#fff', showCloseButton:true}); };
