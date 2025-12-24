@@ -36,8 +36,9 @@
         </header>
 
         <main>
-            <!-- VISTA OPERADOR (PÁGINA PRINCIPAL: LISTA PEDIDOS PENDIENTES) -->
+            <!-- VISTA OPERADOR (PÁGINA PRINCIPAL) -->
             <section id="view-operador" class="role-section">
+                <!-- SECCIÓN 1: PEDIDOS PENDIENTES -->
                 <div class="header-row" style="margin-bottom:20px; display:flex; justify-content:space-between; align-items:center; border-bottom: 2px solid #334155; padding-bottom: 15px;">
                     <h3><i class="fa-solid fa-list-check"></i> Mis Pedidos Pendientes</h3>
                     <button onclick="openPedidoModal()" class="btn-primary" style="width:auto; padding:12px 25px; font-size:1rem; background:var(--orange); border:none; color:white;">
@@ -45,6 +46,13 @@
                     </button>
                 </div>
                 <div id="listPedidosOperador" class="cards-grid"></div>
+
+                <!-- SECCIÓN 2: RUTAS ACTIVAS (NUEVO) -->
+                <div class="header-row" style="margin-top:40px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center; border-bottom: 2px solid #334155; padding-bottom: 15px;">
+                    <h3><i class="fa-solid fa-truck-fast"></i> Rutas en Tránsito (Asignadas)</h3>
+                    <button onclick="loadData()" class="btn-sec"><i class="fa-solid fa-rotate"></i></button>
+                </div>
+                <div id="listRutasActivasOperador" class="cards-grid"></div>
             </section>
 
             <!-- VISTA ADMIN (PÁGINA PRINCIPAL: RUTAS ACTIVAS) -->

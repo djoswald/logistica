@@ -86,13 +86,46 @@ document.getElementById('formPedido').addEventListener('submit', async(e) => {
     const res = await fetch(url, {method:method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
     if(res.ok) { Swal.fire('Guardado', editId ? 'Pedido actualizado' : 'Pedido creado', 'success'); document.getElementById('modalPedido').style.display = 'none'; loadData(); }
 });
+
+// RENDERIZADO OPERADOR (MODIFICADO: INCLUYE RUTAS ACTIVAS)
 window.renderOperador = () => {
+    // 1. Pedidos Pendientes (Igual que antes)
     const c = document.getElementById('listPedidosOperador'); c.innerHTML = '';
     rawPedidos.forEach(p => {
         let prodsList = p.productos.map(x => `<li>${x.producto} (${x.kg_plan}kg)</li>`).join('');
         c.innerHTML += `<div class="card item-card status-creada"><div style="display:flex; justify-content:space-between"><h4>${p.cliente}</h4><div><button onclick="openPedidoModal('${p.id}')" class="btn-sec small" style="color:var(--orange); border-color:var(--orange); margin-right:5px;"><i class="fa-solid fa-pen"></i></button><button onclick="borrarPedido('${p.id}')" class="btn-del small"><i class="fa-solid fa-trash"></i></button></div></div><p>Ord: ${p.orden || '--'} | ${fmtDate(p.fecha)} ${fmtTime(p.hora)}</p><ul style="font-size:0.8rem; padding-left:20px; color:#ccc;">${prodsList}</ul><div style="text-align:right; font-weight:bold; border-top:1px solid #444; padding-top:5px;">Total: ${fmtNum.format(p.total_kg)} Kg</div></div>`;
     });
+
+    // 2. Rutas Activas (NUEVO)
+    const activesOp = document.getElementById('listRutasActivasOperador');
+    if(activesOp) {
+        activesOp.innerHTML = '';
+        const rutasActivas = rawDespachos.filter(x => x.estado === 'Asignada');
+        
+        if(rutasActivas.length === 0) {
+            activesOp.innerHTML = '<p style="color:#777; font-style:italic; text-align:center;">No hay rutas asignadas actualmente.</p>';
+        }
+
+        rutasActivas.forEach(r => {
+            activesOp.innerHTML += `
+            <div class="card item-card status-asignada">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                    <h4>${r.nombre_ruta}</h4>
+                    <span class="badge" style="background:var(--primary); font-size:0.7rem;">EN RUTA</span>
+                </div>
+                <p><i class="fa-solid fa-truck"></i> ${r.placa_vehiculo} | ${r.conductor_asignado}</p>
+                <p><strong>${fmtNum.format(r.total_kg_ruta)} Kg</strong> | ${r.detalles.length} Puntos de Entrega</p>
+                
+                <div class="mt">
+                    <button onclick="openTicket('${r.id}')" class="btn-sec" style="width:100%">
+                        🖨️ Ver Planilla / Tiquete
+                    </button>
+                </div>
+            </div>`;
+        });
+    }
 };
+
 window.borrarPedido = async (id) => { if((await Swal.fire({title:'¿Borrar Pedido?', icon:'warning', showCancelButton:true})).isConfirmed) { await fetch(`/api/pedidos/${id}`, {method:'DELETE'}); loadData(); } };
 
 // ==========================================
@@ -148,7 +181,6 @@ window.borrarRuta = async (id) => { if((await Swal.fire({title:'¿Borrar Ruta?',
 window.renderConductor = () => { const l = rawDespachos.filter(x => x.conductor_asignado === user.nombre && x.estado === 'Asignada'); const c = document.getElementById('listMisRutas'); c.innerHTML = ''; l.forEach(r => { let details = ''; r.detalles.forEach(d => details += `<li>${d.cliente} (Ord: ${d.orden || 'S/N'})</li>`); c.innerHTML += `<div class="card item-card status-asignada"><h3>${r.nombre_ruta}</h3><p><i class="fa-solid fa-truck"></i> ${r.placa_vehiculo} | <strong>${fmtNum.format(r.total_kg_ruta)} Kg</strong></p><ul style="font-size:0.8rem; color:#ccc; padding-left:20px">${details}</ul><div class="grid-2 mt"><button onclick="openTicket('${r.id}')" class="btn-sec">🖨️ Ver Tiquete</button><button onclick="openFin('${r.id}')" class="btn-primary">ENTREGAR / FINALIZAR</button></div></div>`; }); };
 window.openFin = (id) => { const r = rawDespachos.find(x => x.id == id); document.getElementById('finId').value = id; const b = document.getElementById('checklistProds'); b.innerHTML = ''; r.detalles.forEach((c,ic) => { let h = `<div class="check-group"><div style="font-weight:bold; color:var(--orange); display:flex; justify-content:space-between;"><span>${c.cliente}</span> <span>Ord: ${c.orden||'--'}</span></div>`; c.productos.forEach((p,ip) => { h += `<div class="check-item-cond"><div style="flex:2">${p.producto}</div><div style="flex:1; text-align:right; font-size:0.8rem; color:#aaa;">Plan: ${fmtNum.format(p.kg_plan)}Kg</div><div style="flex:1; text-align:right;"><input type="number" class="kg-ent-input" data-ic="${ic}" data-ip="${ip}" data-plan="${p.kg_plan}" value="${p.kg_plan}" oninput="recalc()"></div></div>`; }); b.innerHTML += h + '</div>'; }); document.getElementById('gastosContainer').innerHTML=''; recalc(); document.getElementById('modalFinalizar').style.display='flex'; };
 
-// FUNCIÓN CLAVE: Recalcula en tiempo real en el modal
 window.recalc = () => { 
     const r = rawDespachos.find(x => x.id == document.getElementById('finId').value); 
     let kgEntregadosTotal = 0; 
@@ -164,12 +196,10 @@ window.recalc = () => {
 
 window.addGastoRow = () => { const d = document.createElement('div'); d.className='grid-2 mini-grid'; d.innerHTML = `<input type="text" class="g-desc" placeholder="Desc."><input type="number" class="g-val" placeholder="$" oninput="recalc()">`; document.getElementById('gastosContainer').appendChild(d); };
 
-// FUNCIÓN CORREGIDA: Envía el campo correcto al backend
 window.submitFinalizar = async() => { 
     const id = document.getElementById('finId').value; 
     const r = rawDespachos.find(x => x.id == id); 
     
-    // Actualizar estados locales de productos
     document.querySelectorAll('.kg-ent-input').forEach(inp => { 
         const ic = inp.dataset.ic; 
         const ip = inp.dataset.ip; 
@@ -186,7 +216,6 @@ window.submitFinalizar = async() => {
     const g = []; 
     document.querySelectorAll('#gastosContainer .grid-2').forEach(e => g.push({desc:e.querySelector('.g-desc').value, val:e.querySelector('.g-val').value})); 
     
-    // Preparar valores para envío
     const totalPagarRaw = document.getElementById('finTotal').innerText.replace(/[$.]/g,'').replace(',','.'); 
     const totalKgRealRaw = document.getElementById('finKg').innerText.replace(/\./g,'').replace(',','.'); 
     
@@ -195,7 +224,6 @@ window.submitFinalizar = async() => {
     fd.append('gastos_json', JSON.stringify(g)); 
     fd.append('total_pagar', totalPagarRaw); 
     
-    // CAMBIO IMPORTANTE: Usar la clave exacta que espera el servidor
     fd.append('total_kg_entregados_real', totalKgRealRaw); 
     
     if(document.getElementById('finFoto').files[0]) { fd.append('foto', document.getElementById('finFoto').files[0]); } 
@@ -261,6 +289,6 @@ window.renderHistoryTable = () => {
 };
 
 window.exportHistoryCSV = () => { const dataToExport = window.currentHistoryFiltered || historyData; let csv = "\uFEFFFECHA;RUTA;PLACA;CONDUCTOR;KG REALES;TARIFA;COMISION;GASTOS ADICIONALES;PAGO TOTAL\n"; dataToExport.forEach(r => { const kgReal = parseFloat(r.total_kg_entregados_real) || 0; const tarifa = parseFloat(r.valor_tarifa)||0; const comision = (r.tipo_comision === 'variable') ? (kgReal * tarifa) : tarifa; let gastosStr = "Sin Gastos"; if(r.gastos && r.gastos.length > 0) { gastosStr = r.gastos.map(g => `${g.desc}: $${g.val}`).join(' | '); } csv += `${r.fecha_entrega.slice(0,10)};${r.nombre_ruta};${r.placa_vehiculo};${r.conductor_asignado};${kgReal};${tarifa};${comision};${gastosStr};${r.total_pagar_conductor}\n`; }); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8;'})); a.download = `Historial.csv`; a.click(); };
-window.generateTicketHTML = (r) => { let listHTML = ''; r.detalles.forEach(c => { listHTML += `<div style="margin-top:8px; font-weight:bold; border-bottom:1px solid #000; font-size:12px; display:flex; justify-content:space-between;"><span>${c.cliente.toUpperCase()}</span> <span>Ord: ${c.orden||'--'}</span></div>`; c.productos.forEach(p => { const kgPlan = parseFloat(p.kg_plan) || 0; const kgEnt = (p.kg_ent !== undefined) ? parseFloat(p.kg_ent) : kgPlan; let statusTag = ''; if(kgEnt === 0) statusTag = '<span class="t-tag-dev">[DEVUELTO]</span>'; else if(kgEnt < kgPlan) statusTag = '<span class="t-tag-dev">[PARCIAL]</span>'; const style = (kgEnt === 0) ? 't-devuelto' : ''; listHTML += `<div class="t-row ${style}" style="font-size:11px; padding-left:5px"><span style="flex:2">- ${p.producto} ${statusTag}</span><span style="font-weight:bold">${fmtNum.format(kgEnt)} / ${fmtNum.format(kgPlan)} Kg</span></div>`; }); }); let gastosHTML = ''; let gastosTotal = 0; if(r.gastos && r.gastos.length) { gastosHTML = `<div class="t-divider"></div><div class="t-bold" style="margin-top:5px">GASTOS ADICIONALES:</div>`; r.gastos.forEach(g => { gastosHTML += `<div class="t-row"><span>${g.desc}</span><span>${fmtMoney.format(g.val)}</span></div>`; gastosTotal += Number(g.val); }); } const kgRealTotal = parseFloat(r.total_kg_entregados_real) || r.total_kg_ruta; const tarifaVal = Number(r.valor_tarifa || 0); let comisionVal = (r.tipo_comision === 'variable') ? (kgRealTotal * tarifaVal) : tarifaVal; const totalPagar = r.estado === 'Finalizada' ? Number(r.total_pagar_conductor) : (comisionVal + gastosTotal); const obsText = r.observaciones ? r.observaciones : ''; const obsHTML = obsText ? `<div style="margin-top:15px; border:1px dashed #000; padding:5px; font-size:11px; background:#eee;"><strong>OBSERVACIONES:</strong><br>${obsText}</div>` : ''; const h = fmtTime(r.hora_entrega) || ''; return `<div class="t-header"><h2 style="margin:0; font-size:18px">AGROLLANOS LOG</h2><p style="margin:2px 0">NIT: 900.XXX.XXX</p><p style="font-weight:bold; font-size:14px; margin-top:5px">MANIFIESTO DE CARGA #${r.id.toString().slice(-4)}</p></div><div style="font-size:12px; margin-bottom:10px;"><div class="t-row"><span>Ruta:</span><strong>${r.nombre_ruta}</strong></div><div class="t-row"><span>Fecha:</span><span>${fmtDate(r.fecha_entrega)} ${h}</span></div><div class="t-row"><span>Vehículo:</span><span>${r.placa_vehiculo||'---'}</span></div><div class="t-row"><span>Conductor:</span><span>${r.conductor_asignado||'---'}</span></div></div><div class="t-divider"></div><div style="text-align:center;font-weight:bold; margin:5px 0;">DETALLE DE CARGA</div>${listHTML}<div class="t-divider"></div><div class="t-row" style="font-size:13px; margin-top:5px;"><strong>TOTAL ENTREGADO:</strong><strong>${fmtNum.format(kgRealTotal)} Kg</strong></div><div class="t-divider"></div><div class="t-row"><span>Tarifa (${r.tipo_comision||'-'}):</span><span>${fmtMoney.format(tarifaVal)}</span></div><div class="t-row"><span>Comisión Base:</span><span>${fmtMoney.format(comisionVal)}</span></div>${gastosHTML}<div class="t-divider"></div><div class="t-row" style="font-size:15px; margin-top:5px"><strong>TOTAL A PAGAR:</strong><strong>${fmtMoney.format(totalPagar)}</strong></div>${obsHTML}<br><br><div style="text-align:center; font-size:10px; color:#555">Generado por SIDMA LOG | ${new Date().toLocaleString(LOCALE, { timeZone: TIMEZONE })}</div>`; };
+window.generateTicketHTML = (r) => { let listHTML = ''; r.detalles.forEach(c => { listHTML += `<div style="margin-top:8px; font-weight:bold; border-bottom:1px solid #000; font-size:12px; display:flex; justify-content:space-between;"><span>${c.cliente.toUpperCase()}</span> <span>Ord: ${c.orden||'--'}</span></div>`; c.productos.forEach(p => { const kgPlan = parseFloat(p.kg_plan) || 0; const kgEnt = (p.kg_ent !== undefined) ? parseFloat(p.kg_ent) : kgPlan; let statusTag = ''; if(kgEnt === 0) statusTag = '<span class="t-tag-dev">[DEVUELTO]</span>'; else if(kgEnt < kgPlan) statusTag = '<span class="t-tag-dev">[PARCIAL]</span>'; const style = (kgEnt === 0) ? 't-devuelto' : ''; listHTML += `<div class="t-row ${style}" style="font-size:11px; padding-left:5px"><span style="flex:2">- ${p.producto} ${statusTag}</span><span style="font-weight:bold">${fmtNum.format(kgEnt)} / ${fmtNum.format(kgPlan)} Kg</span></div>`; }); }); let gastosHTML = ''; let gastosTotal = 0; if(r.gastos && r.gastos.length) { gastosHTML = `<div class="t-divider"></div><div class="t-bold" style="margin-top:5px">GASTOS ADICIONALES:</div>`; r.gastos.forEach(g => { gastosHTML += `<div class="t-row"><span>${g.desc}</span><span>${fmtMoney.format(g.val)}</span></div>`; gastosTotal += Number(g.val); }); } const kgRealTotal = parseFloat(r.total_kg_entregados_real) || r.total_kg_ruta; const tarifaVal = Number(r.valor_tarifa || 0); let comisionVal = (r.tipo_comision === 'variable') ? (kgRealTotal * tarifaVal) : tarifaVal; const totalPagar = r.estado === 'Finalizada' ? Number(r.total_pagar_conductor) : (comisionVal + gastosTotal); const obsText = r.observaciones ? r.observaciones : ''; const obsHTML = obsText ? `<div style="margin-top:15px; border:1px dashed #000; padding:5px; font-size:11px; background:#eee;"><strong>OBSERVACIONES:</strong><br>${obsText}</div>` : ''; const h = fmtTime(r.hora_entrega) || ''; return `<div class="t-header"><h2 style="margin:0; font-size:18px">AGROLLANOS LOG</h2><p style="margin:2px 0">NIT: 900.XXX.XXX</p><p style="font-weight:bold; font-size:14px; margin-top:5px">MANIFIESTO DE CARGA #${r.id.toString().slice(-4)}</p></div><div style="font-size:12px; margin-bottom:10px;"><div class="t-row"><span>Ruta:</span><strong>${r.nombre_ruta}</strong></div><div class="t-row"><span>Fecha:</span><span>${fmtDate(r.fecha_entrega)} ${h}</span></div><div class="t-row"><span>Vehículo:</span><span>${r.placa_vehiculo||'---'}</span></div><div class="t-row"><span>Conductor:</span><span>${r.conductor_asignado||'---'}</span></div></div><div class="t-divider"></div><div style="text-align:center;font-weight:bold; margin:5px 0;">DETALLE DE CARGA</div>${listHTML}<div class="t-divider"></div><div class="t-row" style="font-size:13px; margin-top:5px;"><strong>TOTAL ENTREGADO:</strong><strong>${fmtNum.format(kgRealTotal)} Kg</strong></div><div class="t-divider"></div><div class="t-row"><span>Tarifa (${r.tipo_comision||'-'}):</span><span>${fmtMoney.format(tarifaVal)}</span></div><div class="t-row"><span>Comisión Base:</span><span>${fmtMoney.format(comisionVal)}</span></div>${gastosHTML}<div class="t-divider"></div><div class="t-row" style="font-size:15px; margin-top:5px"><strong>TOTAL A PAGAR:</strong><strong>${fmtMoney.format(totalPagar)}</strong></div>${obsHTML}<br><br><div style="text-align:center; font-size:10px; color:#555">Enrutado por el SidmaLog Agrollanos| ${new Date().toLocaleString(LOCALE, { timeZone: TIMEZONE })}</div>`; };
 window.openTicket = (id) => { const r = rawDespachos.find(x => x.id == id) || historyData.find(x => x.id == id); const h = generateTicketHTML(r); document.getElementById('ticketPreviewContent').innerHTML = h; document.getElementById('printArea').innerHTML = h; document.getElementById('modalTicket').style.display = 'flex'; };
 window.printNow = () => window.print(); window.closeModal = (id) => document.getElementById(id).style.display='none'; window.logout = () => { localStorage.removeItem('sidma_user'); location.reload(); }; window.verFoto = (url) => { Swal.fire({imageUrl: url, imageAlt: 'Evidencia', width: 600, showConfirmButton: false, background: '#1e293b', color: '#fff', showCloseButton:true}); };
