@@ -418,7 +418,10 @@ window.generateTicketHTML = (r) => {
     const totalPagar = r.estado === 'Finalizada' ? Number(r.total_pagar_conductor) : (comisionVal + gastosTotal); 
     const obsText = r.observaciones ? r.observaciones : ''; 
     const obsHTML = obsText ? `<div style="margin-top:15px; border:1px dashed #000; padding:5px; font-size:11px; background:#eee;"><strong>OBSERVACIONES:</strong><br>${obsText}</div>` : ''; 
-    const h = fmtTime(r.hora_entrega) || ''; 
+    
+    // USAMOS r.hora que se captura en la creación/edición de la ruta
+    const h_salida = fmtTime(r.hora) || '--:--';
+    const h_entrega = r.estado === 'Finalizada' ? fmtTime(r.hora_entrega) : '';
     
     return `
     <div class="t-header">
@@ -428,7 +431,8 @@ window.generateTicketHTML = (r) => {
     </div>
     <div style="font-size:12px; margin-bottom:10px;">
         <div class="t-row"><span>Ruta:</span><strong>${r.nombre_ruta}</strong></div>
-        <div class="t-row"><span>Fecha:</span><span>${fmtDate(r.fecha_entrega)} ${h}</span></div>
+        <div class="t-row"><span>Salida:</span><span>${fmtDate(r.fecha)} ${h_salida}</span></div>
+        ${h_entrega ? `<div class="t-row"><span>Finalizado:</span><span>${h_entrega}</span></div>` : ''}
         <div class="t-row"><span>Vehículo:</span><span>${r.placa_vehiculo||'---'}</span></div>
         <div class="t-row"><span>Conductor:</span><span>${r.conductor_asignado||'---'}</span></div>
     </div>
@@ -459,22 +463,25 @@ window.openTicket = (id) => {
     document.getElementById('modalTicket').style.display = 'flex'; 
 };
 
-// NUEVA FUNCIONALIDAD: Compartir por WhatsApp (Abre selector de contactos/grupos)
+// ACTUALIZADO: WhatsApp con emojis para optimizar espacio (🚛 Placa, 🛞 Conductor, 📦 Pedido)
 window.sendWhatsAppTicket = () => {
     if (!currentTicketRoute) return;
 
-    // Construir el mensaje de texto limpio para compartir
-    let msg = `*MANIFIESTO DE CARGA #${currentTicketRoute.id.toString().slice(-4)}*\n\n`;
-    msg += `📅 Fecha: ${fmtDate(currentTicketRoute.fecha_entrega || currentTicketRoute.fecha)}\n`;
-    msg += `🚛 Ruta: ${currentTicketRoute.nombre_ruta}\n`;
-    msg += `🚍 Placa: ${currentTicketRoute.placa_vehiculo}\n`;
-    msg += `👤 Conductor: ${currentTicketRoute.conductor_asignado}\n\n`;
+    const fecha = fmtDate(currentTicketRoute.fecha_entrega || currentTicketRoute.fecha);
+    const hora = fmtTime(currentTicketRoute.hora || '');
+
+    // Formato de texto condensado con caracteres especiales de WhatsApp
+    let msg = `*MANIFIESTO DE CARGA #${currentTicketRoute.id.toString().slice(-4)}*\n`;
+    msg += `📅 *Salida:* ${fecha} ⏰ ${hora}\n`;
+    msg += `🛞 *Conductor:* ${currentTicketRoute.conductor_asignado}\n`;
+    msg += `🚛 *Placa:* ${currentTicketRoute.placa_vehiculo}\n`;
+    msg += `📍 *Ruta:* ${currentTicketRoute.nombre_ruta}\n\n`;
     
-    msg += `*DETALLE DE CARGA:*\n`;
+    msg += `📦 *DETALLE DE CARGA:*\n`;
     currentTicketRoute.detalles.forEach(c => {
-        msg += `🔹 *${c.cliente}* (Ord: ${c.orden || 'S/N'})\n`;
+        msg += `• *${c.cliente.toUpperCase()}* (📦 Ord: ${c.orden || 'S/N'})\n`;
         c.productos.forEach(p => {
-            msg += `   - ${p.producto}: ${p.kg_plan} Kg\n`;
+            msg += `   - ${p.producto}: ${fmtNum.format(parseFloat(p.kg_plan))} Kg\n`;
         });
     });
 
@@ -482,12 +489,11 @@ window.sendWhatsAppTicket = () => {
 
     msg += `\n📦 *Total Carga:* ${fmtNum.format(totalKg)} Kg\n`;
     
-    // IMPORTANTE: Aseguramos que las observaciones se incluyan al final del mensaje
     if (currentTicketRoute.observaciones) {
-        msg += `\n📝 *OBSERVACIONES:* ${currentTicketRoute.observaciones}\n`;
+        msg += `\n📝 *OBS:* ${currentTicketRoute.observaciones}\n`;
     }
 
-    // Al no incluir un número en la URL, WhatsApp abre el selector de contactos o grupos
+    // Abre el selector de contactos o grupos de WhatsApp
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
 };
 
