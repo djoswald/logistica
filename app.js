@@ -22,9 +22,32 @@ const TIMEZONE = 'America/Bogota';
 const fmtMoney = new Intl.NumberFormat(LOCALE, { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0 });
 const fmtNum = new Intl.NumberFormat(LOCALE, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 
-const fmtDate = (iso) => { if(!iso) return ''; if(iso.includes('-') && !iso.includes('T')) { const [y,m,d]=iso.split('-'); return `${d}/${m}/${y}`; } return new Date(iso).toLocaleDateString(LOCALE, { timeZone: TIMEZONE }); };
-const fmtTime = (raw) => { if(!raw) return ''; if(raw.includes('T')) { try{return new Date(raw).toLocaleTimeString('en-GB',{timeZone:TIMEZONE,hour:'2-digit',minute:'2-digit'});}catch{return raw.substring(0,5);} } return raw.length>5?raw.substring(0,5):raw; };
-const getBogotaDateISO = () => { const d = new Date(new Date().toLocaleString("en-US", {timeZone: TIMEZONE})); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+const fmtDate = (iso) => { 
+    if(!iso) return ''; 
+    if(iso.includes('-') && !iso.includes('T')) { 
+        const [y,m,d]=iso.split('-'); 
+        return `${d}/${m}/${y}`; 
+    } 
+    return new Date(iso).toLocaleDateString(LOCALE, { timeZone: TIMEZONE }); 
+};
+
+const fmtTime = (raw) => { 
+    if(!raw) return ''; 
+    if(raw.includes('T')) { 
+        try {
+            return new Date(raw).toLocaleTimeString('en-GB',{timeZone:TIMEZONE,hour:'2-digit',minute:'2-digit'});
+        } catch {
+            const parts = raw.split('T');
+            return parts.length > 1 ? parts[1].substring(0,5) : raw.substring(0,5);
+        } 
+    } 
+    return raw.length > 5 ? raw.substring(0,5) : raw; 
+};
+
+const getBogotaDateISO = () => { 
+    const d = new Date(new Date().toLocaleString("en-US", {timeZone: TIMEZONE})); 
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); 
+};
 
 const parseDateStr = (dateStr) => {
     if (!dateStr) return '0000-00-00';
@@ -177,6 +200,7 @@ window.renderAdmin = () => {
 window.openCrearRutaModal = () => {
     document.getElementById('formRutaAdmin').reset();
     document.getElementById('rFecha').value = getBogotaDateISO();
+    document.getElementById('rHora').value = new Date().toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
     document.getElementById('selCount').innerText = '0'; 
     document.getElementById('selKg').innerText = '0';
     
@@ -419,9 +443,9 @@ window.generateTicketHTML = (r) => {
     const obsText = r.observaciones ? r.observaciones : ''; 
     const obsHTML = obsText ? `<div style="margin-top:15px; border:1px dashed #000; padding:5px; font-size:11px; background:#eee;"><strong>OBSERVACIONES:</strong><br>${obsText}</div>` : ''; 
     
-    // USAMOS r.hora que se captura en la creación/edición de la ruta
-    const h_salida = fmtTime(r.hora) || '--:--';
-    const h_entrega = r.estado === 'Finalizada' ? fmtTime(r.hora_entrega) : '';
+    // CORRECCIÓN: Usamos hora_entrega que es donde el servidor mapea req.body.hora al crear ruta
+    const fecha_salida = r.fecha_entrega || r.fecha || '';
+    const h_salida = fmtTime(r.hora_entrega) || '--:--';
     
     return `
     <div class="t-header">
@@ -431,8 +455,8 @@ window.generateTicketHTML = (r) => {
     </div>
     <div style="font-size:12px; margin-bottom:10px;">
         <div class="t-row"><span>Ruta:</span><strong>${r.nombre_ruta}</strong></div>
-        <div class="t-row"><span>Salida:</span><span>${fmtDate(r.fecha)} ${h_salida}</span></div>
-        ${h_entrega ? `<div class="t-row"><span>Finalizado:</span><span>${h_entrega}</span></div>` : ''}
+        <div class="t-row"><span>Salida:</span><span>${fmtDate(fecha_salida)} hora: ${h_salida}</span></div>
+        <div class="t-row"><span>Estado:</span><span>${r.estado.toUpperCase()}</span></div>
         <div class="t-row"><span>Vehículo:</span><span>${r.placa_vehiculo||'---'}</span></div>
         <div class="t-row"><span>Conductor:</span><span>${r.conductor_asignado||'---'}</span></div>
     </div>
@@ -463,16 +487,17 @@ window.openTicket = (id) => {
     document.getElementById('modalTicket').style.display = 'flex'; 
 };
 
-// ACTUALIZADO: WhatsApp con emojis para optimizar espacio (🚛 Placa, 🛞 Conductor, 📦 Pedido)
+// ACTUALIZADO: WhatsApp con emojis y detección robusta de fecha/hora (Cargue vs Pedido)
 window.sendWhatsAppTicket = () => {
     if (!currentTicketRoute) return;
 
+    // Aseguramos que detecte la fecha independientemente de la fuente (Despachos o Historial)
     const fecha = fmtDate(currentTicketRoute.fecha_entrega || currentTicketRoute.fecha);
-    const hora = fmtTime(currentTicketRoute.hora || '');
+    const horaCargue = fmtTime(currentTicketRoute.hora_entrega || '');
 
     // Formato de texto condensado con caracteres especiales de WhatsApp
     let msg = `*MANIFIESTO DE CARGA #${currentTicketRoute.id.toString().slice(-4)}*\n`;
-    msg += `📅 *Salida:* ${fecha} ⏰ ${hora}\n`;
+    msg += `📅 *Salida:* ${fecha} hora: ${horaCargue}\n`;
     msg += `🛞 *Conductor:* ${currentTicketRoute.conductor_asignado}\n`;
     msg += `🚛 *Placa:* ${currentTicketRoute.placa_vehiculo}\n`;
     msg += `📍 *Ruta:* ${currentTicketRoute.nombre_ruta}\n\n`;
