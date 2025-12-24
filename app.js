@@ -753,18 +753,34 @@ window.renderHistoryTable = () => {
 
 window.changeHistoryPage = (delta) => { curHistPage += delta; renderHistoryTable(); };
 
+// ACTUALIZACIÓN: EXPORTACIÓN DETALLADA DE GASTOS
 window.exportHistoryCSV = () => { 
     const dataToExport = window.currentHistoryFiltered || historyData; 
-    let csv = "\uFEFFFECHA;RUTA;PLACA;CONDUCTOR;KG REALES;TARIFA;COMISION;GASTOS;PAGO TOTAL\n"; 
+    // Cabecera con nuevas columnas de gastos
+    let csv = "\uFEFFFECHA;RUTA;PLACA;CONDUCTOR;KG REALES;TARIFA;COMISION;VALOR GASTOS;DESCRIPCIÓN GASTOS;PAGO TOTAL\n"; 
+    
     dataToExport.forEach(r => { 
         const kgReal = parseFloat(r.total_kg_entregados_real) || 0; 
         const tarifa = parseFloat(r.valor_tarifa)||0; 
         const comision = (r.tipo_comision === 'variable') ? (kgReal * tarifa) : tarifa; 
-        csv += `${r.fecha_entrega || r.fecha};${r.nombre_ruta};${r.placa_vehiculo};${r.conductor_asignado};${kgReal};${tarifa};${comision};${(r.gastos||[]).length};${r.total_pagar_conductor}\n`; 
+        
+        // Calcular suma de montos y concatenar descripciones
+        let totalValGastos = 0;
+        let descs = "";
+        (r.gastos || []).forEach(g => {
+            totalValGastos += parseFloat(g.val) || 0;
+            if (g.desc) descs += `${g.desc}: ${g.val} | `;
+        });
+        
+        // Limpiar la descripción de caracteres que rompan el CSV (punto y coma)
+        const descsClean = descs.replace(/;/g, ",").slice(0, -3); // Elimina el último " | "
+        
+        csv += `${r.fecha_entrega || r.fecha};${r.nombre_ruta};${r.placa_vehiculo};${r.conductor_asignado};${kgReal};${tarifa};${comision};${totalValGastos};"${descsClean}";${r.total_pagar_conductor}\n`; 
     }); 
+    
     const a = document.createElement('a'); 
     a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8;'})); 
-    a.download = `Historial_Agrollanos.csv`; 
+    a.download = `Reporte_Detallado_Agrollanos.csv`; 
     a.click(); 
 };
 
