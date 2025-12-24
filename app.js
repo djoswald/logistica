@@ -497,14 +497,14 @@ window.sendWhatsAppTicket = () => {
 
     // Formato de texto condensado con caracteres especiales de WhatsApp
     let msg = `*MANIFIESTO DE CARGA #${currentTicketRoute.id.toString().slice(-4)}*\n`;
-    msg += `📅 *Salida:* ${fecha} hora: ${horaCargue}\n`;
-    msg += `🛞 *Conductor:* ${currentTicketRoute.conductor_asignado}\n`;
-    msg += `🚛 *Placa:* ${currentTicketRoute.placa_vehiculo}\n`;
+    msg += `📅 *FECHA:* ${fecha} hora: ${horaCargue}\n`;
+    msg += `🛞 *:* ${currentTicketRoute.conductor_asignado}\n`;
+    msg += `🚛 *:* ${currentTicketRoute.placa_vehiculo}\n`;
     msg += `📍 *Ruta:* ${currentTicketRoute.nombre_ruta}\n\n`;
     
-    msg += `📦 *DETALLE DE CARGA:*\n`;
+    msg += ` *DETALLE DE CARGA:*\n`;
     currentTicketRoute.detalles.forEach(c => {
-        msg += `• *${c.cliente.toUpperCase()}* (📦 Ord: ${c.orden || 'S/N'})\n`;
+        msg += `• *${c.cliente.toUpperCase()}* ( Ord: ${c.orden || 'S/N'})\n`;
         c.productos.forEach(p => {
             msg += `   - ${p.producto}: ${fmtNum.format(parseFloat(p.kg_plan))} Kg\n`;
         });
