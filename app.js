@@ -8,11 +8,14 @@ let historyData = [];
 // Variables Paginación
 let curHistPage = 1;
 const itemsPerPage = 5;
-let currentHistoryFiltered = []; // Para almacenar el filtrado actual
+let currentHistoryFiltered = []; 
 
 // Variables Memoria (Autocompletado)
 let knownClients = new Set();
 let knownProducts = new Set();
+
+// Variable para el Tiquete actual (WhatsApp)
+let currentTicketRoute = null;
 
 const LOCALE = 'es-CO';
 const TIMEZONE = 'America/Bogota';
@@ -52,25 +55,29 @@ window.refreshData = async () => { await loadData(); Swal.fire({toast:true, posi
 
 async function loadData(){
     const res = await fetch('/api/data'); const d = await res.json();
-    vehiculosList = d.vehiculos; conductoresList = d.conductores;
+    vehiculosList = (d.vehiculos || []).map(v => ({...v, capacidad: parseFloat(v.capacidad) || 0}));
+    conductoresList = d.conductores;
     rawDespachos = (d.despachos || []).map(processRow);
     rawPedidos = (d.pedidos || []).map(p => { let item = {...p}; try { item.productos = JSON.parse(item.productos_json); } catch { item.productos = []; } let t = 0; item.productos.forEach(x => t += parseFloat(x.kg_plan)||0); item.total_kg = t; return item; });
     
-    // AUTO-APRENDIZAJE: Extraer datos para autocompletado
     extractUniqueData();
-    
     renderViews();
+
+    fetch('/api/historial')
+        .then(r => r.json())
+        .then(hist => {
+            historyData = hist.map(processRow);
+            extractUniqueData(); 
+            console.log("Sistema actualizado: Memoria histórica cargada.");
+        })
+        .catch(e => console.error("Error cargando memoria histórica:", e));
 }
 
-// NUEVO: Función para extraer clientes y productos únicos
 function extractUniqueData() {
-    // Escanear Pedidos Pendientes
     rawPedidos.forEach(p => {
         if(p.cliente) knownClients.add(p.cliente);
         if(p.productos) p.productos.forEach(prod => { if(prod.producto) knownProducts.add(prod.producto); });
     });
-
-    // Escanear Rutas Activas
     rawDespachos.forEach(r => {
         if(r.detalles) {
             r.detalles.forEach(d => {
@@ -79,8 +86,6 @@ function extractUniqueData() {
             });
         }
     });
-
-    // Escanear Historial (si está cargado)
     historyData.forEach(r => {
         if(r.detalles) {
             r.detalles.forEach(d => {
@@ -89,7 +94,6 @@ function extractUniqueData() {
             });
         }
     });
-
     updateAutocompleteLists();
 }
 
@@ -127,7 +131,6 @@ window.openPedidoModal = (id = null) => {
 window.addProdRow = (containerOrBtn, name='', kg='') => {
     let container = (containerOrBtn.id === 'prodContainer') ? containerOrBtn : document.getElementById('prodContainer');
     const row = document.createElement('div'); row.className = 'prod-row';
-    // CAMBIO: Agregado list="listProductos" para autocompletado
     row.innerHTML = `<input type="text" class="pr-name" placeholder="Producto" style="flex:2" value="${name}" list="listProductos" autocomplete="off" required><input type="number" class="pr-kg" placeholder="Kg" oninput="calcTotalPedido()" style="flex:1" value="${kg}" required><button type="button" onclick="this.parentElement.remove(); calcTotalPedido()" class="btn-del small">x</button>`;
     container.appendChild(row);
 };
@@ -177,6 +180,11 @@ window.openCrearRutaModal = () => {
     document.getElementById('selCount').innerText = '0'; 
     document.getElementById('selKg').innerText = '0';
     
+    document.getElementById('vehCapacidad').innerText = '---';
+    document.getElementById('overloadWarning').style.display = 'none';
+    document.getElementById('selKg').style.color = 'var(--green)';
+    document.getElementById('vehCapacidad').style.color = 'inherit';
+
     const pool = document.getElementById('poolPedidosAdmin'); pool.innerHTML = '';
     if(rawPedidos.length === 0) pool.innerHTML = '<p style="color:#777; font-style:italic; text-align:center; margin-top:50px;">No hay pedidos pendientes.</p>';
     
@@ -189,7 +197,38 @@ window.openCrearRutaModal = () => {
     document.getElementById('modalCrearRuta').style.display = 'flex';
 };
 
-window.calcRutaAdmin = () => { let count = 0; let kg = 0; document.querySelectorAll('.chk-pedido:checked').forEach(c => { count++; kg += parseFloat(c.dataset.kg); }); document.getElementById('selCount').innerText = count; document.getElementById('selKg').innerText = fmtNum.format(kg); };
+window.calcRutaAdmin = () => { 
+    let count = 0; 
+    let kg = 0; 
+    document.querySelectorAll('.chk-pedido:checked').forEach(c => { count++; kg += parseFloat(c.dataset.kg); }); 
+    
+    document.getElementById('selCount').innerText = count; 
+    const kgLabel = document.getElementById('selKg');
+    kgLabel.innerText = fmtNum.format(kg); 
+
+    const placa = document.getElementById('rPlaca').value;
+    const vehiculo = vehiculosList.find(v => v.placa === placa);
+    const capLabel = document.getElementById('vehCapacidad');
+    const warning = document.getElementById('overloadWarning');
+
+    if(vehiculo) {
+        const capacidad = vehiculo.capacidad || 0;
+        capLabel.innerText = fmtNum.format(capacidad);
+        if(capacidad > 0 && kg > capacidad) {
+            kgLabel.style.color = '#ef4444';
+            capLabel.style.color = '#ef4444';
+            warning.style.display = 'block';
+        } else {
+            kgLabel.style.color = 'var(--green)';
+            capLabel.style.color = 'inherit';
+            warning.style.display = 'none';
+        }
+    } else {
+        capLabel.innerText = '---';
+        warning.style.display = 'none';
+        kgLabel.style.color = 'var(--green)';
+    }
+};
 
 document.getElementById('formRutaAdmin').addEventListener('submit', async(e) => {
     e.preventDefault(); const chks = document.querySelectorAll('.chk-pedido:checked'); if(chks.length === 0) return Swal.fire('Atención', 'Selecciona al menos un pedido para la ruta', 'warning');
@@ -274,8 +313,6 @@ window.openHistory = async () => {
         const res = await fetch('/api/historial'); 
         const archivadas = await res.json(); 
         historyData = archivadas.map(processRow); 
-        
-        // Cargar también clientes/productos del historial a la memoria
         extractUniqueData();
 
         const isoStart = getBogotaDateISO().substring(0, 8) + '01'; 
@@ -308,7 +345,6 @@ window.renderHistoryTable = () => {
     }); 
     currentHistoryFiltered = filtrados;
 
-    // --- LÓGICA DE PAGINACIÓN ---
     const totalItems = filtrados.length;
     const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
     if (curHistPage > totalPages) curHistPage = totalPages;
@@ -318,14 +354,11 @@ window.renderHistoryTable = () => {
     const endIdx = startIdx + itemsPerPage;
     const pageData = filtrados.slice(startIdx, endIdx);
 
-    // Actualizar controles UI
     document.getElementById('pageIndicator').innerText = `Página ${curHistPage} de ${totalPages}`;
     document.getElementById('btnPrevHist').disabled = (curHistPage === 1);
     document.getElementById('btnNextHist').disabled = (curHistPage === totalPages);
     
     let tKg = 0, tCom = 0; 
-    // Calcular totales SOLO de lo filtrado (o de todo, según preferencia, usualmente totales de filtro)
-    // Aquí calculo totales de TODO lo filtrado, no solo la página visible
     filtrados.forEach(r => {
         const kg = parseFloat(r.total_kg_entregados_real) || 0; 
         const tar = parseFloat(r.valor_tarifa)||0; 
@@ -349,12 +382,113 @@ window.renderHistoryTable = () => {
     document.getElementById('hComision').textContent = fmtMoney.format(tCom); 
 };
 
-window.changeHistoryPage = (delta) => {
-    curHistPage += delta;
-    renderHistoryTable();
-};
+window.changeHistoryPage = (delta) => { curHistPage += delta; renderHistoryTable(); };
 
 window.exportHistoryCSV = () => { const dataToExport = window.currentHistoryFiltered || historyData; let csv = "\uFEFFFECHA;RUTA;PLACA;CONDUCTOR;KG REALES;TARIFA;COMISION;GASTOS ADICIONALES;PAGO TOTAL\n"; dataToExport.forEach(r => { const kgReal = parseFloat(r.total_kg_entregados_real) || 0; const tarifa = parseFloat(r.valor_tarifa)||0; const comision = (r.tipo_comision === 'variable') ? (kgReal * tarifa) : tarifa; let gastosStr = "Sin Gastos"; if(r.gastos && r.gastos.length > 0) { gastosStr = r.gastos.map(g => `${g.desc}: $${g.val}`).join(' | '); } csv += `${r.fecha_entrega.slice(0,10)};${r.nombre_ruta};${r.placa_vehiculo};${r.conductor_asignado};${kgReal};${tarifa};${comision};${gastosStr};${r.total_pagar_conductor}\n`; }); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8;'})); a.download = `Historial.csv`; a.click(); };
-window.generateTicketHTML = (r) => { let listHTML = ''; r.detalles.forEach(c => { listHTML += `<div style="margin-top:8px; font-weight:bold; border-bottom:1px solid #000; font-size:12px; display:flex; justify-content:space-between;"><span>${c.cliente.toUpperCase()}</span> <span>Ord: ${c.orden||'--'}</span></div>`; c.productos.forEach(p => { const kgPlan = parseFloat(p.kg_plan) || 0; const kgEnt = (p.kg_ent !== undefined) ? parseFloat(p.kg_ent) : kgPlan; let statusTag = ''; if(kgEnt === 0) statusTag = '<span class="t-tag-dev">[DEVUELTO]</span>'; else if(kgEnt < kgPlan) statusTag = '<span class="t-tag-dev">[PARCIAL]</span>'; const style = (kgEnt === 0) ? 't-devuelto' : ''; listHTML += `<div class="t-row ${style}" style="font-size:11px; padding-left:5px"><span style="flex:2">- ${p.producto} ${statusTag}</span><span style="font-weight:bold">${fmtNum.format(kgEnt)} / ${fmtNum.format(kgPlan)} Kg</span></div>`; }); }); let gastosHTML = ''; let gastosTotal = 0; if(r.gastos && r.gastos.length) { gastosHTML = `<div class="t-divider"></div><div class="t-bold" style="margin-top:5px">GASTOS ADICIONALES:</div>`; r.gastos.forEach(g => { gastosHTML += `<div class="t-row"><span>${g.desc}</span><span>${fmtMoney.format(g.val)}</span></div>`; gastosTotal += Number(g.val); }); } const kgRealTotal = parseFloat(r.total_kg_entregados_real) || r.total_kg_ruta; const tarifaVal = Number(r.valor_tarifa || 0); let comisionVal = (r.tipo_comision === 'variable') ? (kgRealTotal * tarifaVal) : tarifaVal; const totalPagar = r.estado === 'Finalizada' ? Number(r.total_pagar_conductor) : (comisionVal + gastosTotal); const obsText = r.observaciones ? r.observaciones : ''; const obsHTML = obsText ? `<div style="margin-top:15px; border:1px dashed #000; padding:5px; font-size:11px; background:#eee;"><strong>OBSERVACIONES:</strong><br>${obsText}</div>` : ''; const h = fmtTime(r.hora_entrega) || ''; return `<div class="t-header"><h2 style="margin:0; font-size:18px">🌾SIDMA LOG "AGROLLANOS"</h2><p style="margin:2px 0">NIT: 830104572</p><p style="font-weight:bold; font-size:14px; margin-top:5px">MANIFIESTO DE CARGA #${r.id.toString().slice(-4)}</p></div><div style="font-size:12px; margin-bottom:10px;"><div class="t-row"><span>Ruta:</span><strong>${r.nombre_ruta}</strong></div><div class="t-row"><span>Fecha:</span><span>${fmtDate(r.fecha_entrega)} ${h}</span></div><div class="t-row"><span>Vehículo:</span><span>${r.placa_vehiculo||'---'}</span></div><div class="t-row"><span>Conductor:</span><span>${r.conductor_asignado||'---'}</span></div></div><div class="t-divider"></div><div style="text-align:center;font-weight:bold; margin:5px 0;">DETALLE DE CARGA</div>${listHTML}<div class="t-divider"></div><div class="t-row" style="font-size:13px; margin-top:5px;"><strong>TOTAL ENTREGADO:</strong><strong>${fmtNum.format(kgRealTotal)} Kg</strong></div><div class="t-divider"></div><div class="t-row"><span>Tarifa (${r.tipo_comision||'-'}):</span><span>${fmtMoney.format(tarifaVal)}</span></div><div class="t-row"><span>Comisión Base:</span><span>${fmtMoney.format(comisionVal)}</span></div>${gastosHTML}<div class="t-divider"></div><div class="t-row" style="font-size:15px; margin-top:5px"><strong>TOTAL A PAGAR:</strong><strong>${fmtMoney.format(totalPagar)}</strong></div>${obsHTML}<br><br><div style="text-align:center; font-size:10px; color:#555">Enrutado por el SidmaLog Agrollanos| ${new Date().toLocaleString(LOCALE, { timeZone: TIMEZONE })}</div>`; };
-window.openTicket = (id) => { const r = rawDespachos.find(x => x.id == id) || historyData.find(x => x.id == id); const h = generateTicketHTML(r); document.getElementById('ticketPreviewContent').innerHTML = h; document.getElementById('printArea').innerHTML = h; document.getElementById('modalTicket').style.display = 'flex'; };
+
+// --- ACTUALIZACIÓN DE TIQUETE CON DATOS FISCALES ---
+window.generateTicketHTML = (r) => { 
+    let listHTML = ''; 
+    r.detalles.forEach(c => { 
+        listHTML += `<div style="margin-top:8px; font-weight:bold; border-bottom:1px solid #000; font-size:12px; display:flex; justify-content:space-between;"><span>${c.cliente.toUpperCase()}</span> <span>Ord: ${c.orden||'--'}</span></div>`; 
+        c.productos.forEach(p => { 
+            const kgPlan = parseFloat(p.kg_plan) || 0; 
+            const kgEnt = (p.kg_ent !== undefined) ? parseFloat(p.kg_ent) : kgPlan; 
+            let statusTag = ''; 
+            if(kgEnt === 0) statusTag = '<span class="t-tag-dev">[DEVUELTO]</span>'; 
+            else if(kgEnt < kgPlan) statusTag = '<span class="t-tag-dev">[PARCIAL]</span>'; 
+            const style = (kgEnt === 0) ? 't-devuelto' : ''; 
+            listHTML += `<div class="t-row ${style}" style="font-size:11px; padding-left:5px"><span style="flex:2">- ${p.producto} ${statusTag}</span><span style="font-weight:bold">${fmtNum.format(kgEnt)} / ${fmtNum.format(kgPlan)} Kg</span></div>`; 
+        }); 
+    }); 
+    
+    let gastosHTML = ''; 
+    let gastosTotal = 0; 
+    if(r.gastos && r.gastos.length) { 
+        gastosHTML = `<div class="t-divider"></div><div class="t-bold" style="margin-top:5px">GASTOS ADICIONALES:</div>`; 
+        r.gastos.forEach(g => { 
+            gastosHTML += `<div class="t-row"><span>${g.desc}</span><span>${fmtMoney.format(g.val)}</span></div>`; 
+            gastosTotal += Number(g.val); 
+        }); 
+    } 
+    
+    const kgRealTotal = parseFloat(r.total_kg_entregados_real) || r.total_kg_ruta; 
+    const tarifaVal = Number(r.valor_tarifa || 0); 
+    let comisionVal = (r.tipo_comision === 'variable') ? (kgRealTotal * tarifaVal) : tarifaVal; 
+    const totalPagar = r.estado === 'Finalizada' ? Number(r.total_pagar_conductor) : (comisionVal + gastosTotal); 
+    const obsText = r.observaciones ? r.observaciones : ''; 
+    const obsHTML = obsText ? `<div style="margin-top:15px; border:1px dashed #000; padding:5px; font-size:11px; background:#eee;"><strong>OBSERVACIONES:</strong><br>${obsText}</div>` : ''; 
+    const h = fmtTime(r.hora_entrega) || ''; 
+    
+    return `
+    <div class="t-header">
+        <h2 style="margin:0; font-size:16px">Agrollanos Agricola Del Llano S.a.s.</h2>
+        <p style="margin:2px 0">NIT: 830104572</p>
+        <p style="font-weight:bold; font-size:14px; margin-top:5px">MANIFIESTO DE CARGA #${r.id.toString().slice(-4)}</p>
+    </div>
+    <div style="font-size:12px; margin-bottom:10px;">
+        <div class="t-row"><span>Ruta:</span><strong>${r.nombre_ruta}</strong></div>
+        <div class="t-row"><span>Fecha:</span><span>${fmtDate(r.fecha_entrega)} ${h}</span></div>
+        <div class="t-row"><span>Vehículo:</span><span>${r.placa_vehiculo||'---'}</span></div>
+        <div class="t-row"><span>Conductor:</span><span>${r.conductor_asignado||'---'}</span></div>
+    </div>
+    <div class="t-divider"></div>
+    <div style="text-align:center;font-weight:bold; margin:5px 0;">DETALLE DE CARGA</div>
+    ${listHTML}
+    <div class="t-divider"></div>
+    <div class="t-row" style="font-size:13px; margin-top:5px;"><strong>TOTAL ENTREGADO:</strong><strong>${fmtNum.format(kgRealTotal)} Kg</strong></div>
+    <div class="t-divider"></div>
+    <div class="t-row"><span>Tarifa (${r.tipo_comision||'-'}):</span><span>${fmtMoney.format(tarifaVal)}</span></div>
+    <div class="t-row"><span>Comisión Base:</span><span>${fmtMoney.format(comisionVal)}</span></div>
+    ${gastosHTML}
+    <div class="t-divider"></div>
+    <div class="t-row" style="font-size:15px; margin-top:5px"><strong>TOTAL A PAGAR:</strong><strong>${fmtMoney.format(totalPagar)}</strong></div>
+    ${obsHTML}
+    <br><br>
+    <div style="text-align:center; font-size:10px; color:#555">Generado por SIDMA LOG | ${new Date().toLocaleString(LOCALE, { timeZone: TIMEZONE })}</div>
+    `; 
+};
+
+// Abre la vista previa del ticket y guarda la referencia
+window.openTicket = (id) => { 
+    const r = rawDespachos.find(x => x.id == id) || historyData.find(x => x.id == id); 
+    currentTicketRoute = r; 
+    const h = generateTicketHTML(r); 
+    document.getElementById('ticketPreviewContent').innerHTML = h; 
+    document.getElementById('printArea').innerHTML = h; 
+    document.getElementById('modalTicket').style.display = 'flex'; 
+};
+
+// NUEVA FUNCIONALIDAD: Compartir por WhatsApp (Abre selector de contactos/grupos)
+window.sendWhatsAppTicket = () => {
+    if (!currentTicketRoute) return;
+
+    // Construir el mensaje de texto limpio para compartir
+    let msg = `*MANIFIESTO DE CARGA #${currentTicketRoute.id.toString().slice(-4)}*\n\n`;
+    msg += `📅 Fecha: ${fmtDate(currentTicketRoute.fecha_entrega || currentTicketRoute.fecha)}\n`;
+    msg += `🚛 Ruta: ${currentTicketRoute.nombre_ruta}\n`;
+    msg += `🚍 Placa: ${currentTicketRoute.placa_vehiculo}\n`;
+    msg += `👤 Conductor: ${currentTicketRoute.conductor_asignado}\n\n`;
+    
+    msg += `*DETALLE DE CARGA:*\n`;
+    currentTicketRoute.detalles.forEach(c => {
+        msg += `🔹 *${c.cliente}* (Ord: ${c.orden || 'S/N'})\n`;
+        c.productos.forEach(p => {
+            msg += `   - ${p.producto}: ${p.kg_plan} Kg\n`;
+        });
+    });
+
+    const totalKg = parseFloat(currentTicketRoute.total_kg_ruta) || 0;
+
+    msg += `\n📦 *Total Carga:* ${fmtNum.format(totalKg)} Kg\n`;
+    
+    // IMPORTANTE: Aseguramos que las observaciones se incluyan al final del mensaje
+    if (currentTicketRoute.observaciones) {
+        msg += `\n📝 *OBSERVACIONES:* ${currentTicketRoute.observaciones}\n`;
+    }
+
+    // Al no incluir un número en la URL, WhatsApp abre el selector de contactos o grupos
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+};
+
 window.printNow = () => window.print(); window.closeModal = (id) => document.getElementById(id).style.display='none'; window.logout = () => { localStorage.removeItem('sidma_user'); location.reload(); }; window.verFoto = (url) => { Swal.fire({imageUrl: url, imageAlt: 'Evidencia', width: 600, showConfirmButton: false, background: '#1e293b', color: '#fff', showCloseButton:true}); };

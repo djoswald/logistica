@@ -91,9 +91,17 @@
                 <div style="flex:1; min-width:300px;">
                     <h4 style="margin-top:0; border-bottom:1px solid #444; padding-bottom:5px;">1. Seleccionar Pedidos Pendientes</h4>
                     <div id="poolPedidosAdmin" class="pool-container" style="height: 350px;"></div>
+                    
+                    <!-- AREA DE RESUMEN DE PESO Y ALERTA DE CAPACIDAD -->
                     <div style="text-align:right; margin-top:5px; font-size: 0.9rem;">
                         Seleccionados: <strong id="selCount" style="color:var(--orange)">0</strong> | 
                         Total Peso: <strong id="selKg" style="color:var(--green)">0</strong> Kg
+                        <div style="font-size:0.85rem; color:#ccc; margin-top:3px;">
+                            Capacidad Vehículo: <strong id="vehCapacidad">---</strong> Kg
+                        </div>
+                        <div id="overloadWarning" style="display:none; color:#ef4444; font-weight:bold; margin-top:5px; background: rgba(239,68,68,0.1); padding:5px; border-radius:4px;">
+                            <i class="fa-solid fa-triangle-exclamation"></i> ¡EXCEDE CAPACIDAD!
+                        </div>
                     </div>
                 </div>
 
@@ -105,7 +113,7 @@
                             <div><label>Fecha Ruta</label><input type="date" id="rFecha" required></div>
                             <div><label>Hora Salida</label><input type="time" id="rHora" required></div>
                         </div>
-                        <label>Vehículo</label><select id="rPlaca" required></select>
+                        <label>Vehículo</label><select id="rPlaca" onchange="calcRutaAdmin()" required></select>
                         <label>Conductor</label><select id="rCond" required></select>
                         <div class="grid-2">
                             <div><label>Tipo Pago</label><select id="rTipo"><option value="variable">Variables ($ x Kg)</option><option value="fija">Fija Global</option></select></div>
@@ -194,10 +202,18 @@
         </div>
     </div>
 
+    <!-- MODAL TICKET / VISTA PREVIA (ACTUALIZADO CON BOTÓN WHATSAPP) -->
     <div id="modalTicket" class="modal-overlay">
         <div class="modal-box" style="width: auto; max-width: 400px;">
-            <h3 style="text-align:center;">Vista Previa</h3><div id="ticketPreviewContent" class="ticket-preview-box"></div>
-            <div class="modal-footer" style="justify-content: center; gap: 10px;"><button onclick="closeModal('modalTicket')" class="btn-sec">Cerrar</button><button onclick="printNow()" class="btn-primary" style="background:white; color:black; border:1px solid black;">🖨️ IMPRIMIR</button></div>
+            <h3 style="text-align:center;">Vista Previa</h3>
+            <div id="ticketPreviewContent" class="ticket-preview-box"></div>
+            <div class="modal-footer" style="justify-content: center; gap: 10px;">
+                <button onclick="closeModal('modalTicket')" class="btn-sec">Cerrar</button>
+                <button onclick="sendWhatsAppTicket()" class="btn-primary" style="background:#25D366; color:white; border:none; display:flex; align-items:center; gap:5px;">
+                    <i class="fa-brands fa-whatsapp"></i> ENVIAR WA
+                </button>
+                <button onclick="printNow()" class="btn-primary" style="background:white; color:black; border:1px solid black;">🖨️ IMPRIMIR</button>
+            </div>
         </div>
     </div>
     <div id="printArea"></div>
