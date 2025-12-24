@@ -24,11 +24,16 @@ const fmtNum = new Intl.NumberFormat(LOCALE, { minimumFractionDigits: 0, maximum
 
 const fmtDate = (iso) => { 
     if(!iso) return ''; 
+    // Manejo de strings simples YYYY-MM-DD
     if(iso.includes('-') && !iso.includes('T')) { 
         const [y,m,d]=iso.split('-'); 
         return `${d}/${m}/${y}`; 
     } 
-    return new Date(iso).toLocaleDateString(LOCALE, { timeZone: TIMEZONE }); 
+    try {
+        return new Date(iso).toLocaleDateString(LOCALE, { timeZone: TIMEZONE }); 
+    } catch {
+        return iso;
+    }
 };
 
 const fmtTime = (raw) => { 
@@ -789,7 +794,7 @@ window.verFoto = (url) => {
     Swal.fire({imageUrl: url, imageAlt: 'Evidencia', width: 600, showConfirmButton: false, background: '#1e293b', color: '#fff', showCloseButton:true}); 
 };
 
-// VISTA PREVIA Y WHATSAPP (ACTUALIZADO CON FECHA DE PEDIDO Y HORA DE CARGUE)
+// VISTA PREVIA Y WHATSAPP (CORRECCIÓN DE FECHA DE SALIDA Y HORA DE CARGUE)
 window.generateTicketHTML = (r) => {
     let listHTML = '';
     r.detalles.forEach(c => {
@@ -810,8 +815,10 @@ window.generateTicketHTML = (r) => {
         });
     });
     
-    // Priorizamos la hora de salida guardada (hora) sobre la de entrega (hora_entrega)
+    // Priorizamos la hora guardada en la creación de la ruta (r.hora)
     const h_cargue = fmtTime(r.hora) || fmtTime(r.hora_entrega) || '--:--';
+    // Priorizamos la fecha de la ruta (r.fecha)
+    const f_salida = fmtDate(r.fecha) || fmtDate(r.fecha_entrega) || '--/--/----';
     
     return `
     <div class="t-header">
@@ -820,7 +827,7 @@ window.generateTicketHTML = (r) => {
     </div>
     <div style="font-size:12px; margin-bottom:10px;">
         <div class="t-row"><span>Ruta:</span><strong>${r.nombre_ruta}</strong></div>
-        <div class="t-row"><span>F. Salida:</span><span>${fmtDate(r.fecha)}</span></div>
+        <div class="t-row"><span>F. Salida:</span><span>${f_salida}</span></div>
         <div class="t-row"><span>H. Cargue:</span><span>${h_cargue}</span></div>
         <div class="t-row"><span>Vehículo:</span><span>${r.placa_vehiculo||'---'}</span></div>
         <div class="t-row"><span>Conductor:</span><span>${r.conductor_asignado||'---'}</span></div>
@@ -846,7 +853,7 @@ window.openTicket = (id) => {
 window.sendWhatsAppTicket = () => {
     if (!currentTicketRoute) return;
     const r = currentTicketRoute;
-    const fechaRuta = fmtDate(r.fecha);
+    const fechaRuta = fmtDate(r.fecha) || fmtDate(r.fecha_entrega) || '--/--/----';
     const horaCargue = fmtTime(r.hora) || fmtTime(r.hora_entrega) || '--:--';
     
     let msg = `*MANIFIESTO DE CARGA #${r.id.toString().slice(-4)}*\n`;
