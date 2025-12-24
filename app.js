@@ -1,455 +1,213 @@
 let user = JSON.parse(localStorage.getItem('sidma_user')) || null;
-let rawData = [];
+let rawDespachos = [];
+let rawPedidos = [];
 let vehiculosList = [];
 let conductoresList = [];
-let isEditing = false;
 let historyData = [];
 
-document.addEventListener('DOMContentLoaded', () => {
-    if(!user) document.getElementById('loginScreen').style.display = 'flex';
-    else initApp();
-});
+const LOCALE = 'es-CO';
+const TIMEZONE = 'America/Bogota';
+const fmtMoney = new Intl.NumberFormat(LOCALE, { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0 });
+const fmtNum = new Intl.NumberFormat(LOCALE, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+
+// Formateadores visuales
+const fmtDate = (iso) => { if(!iso) return ''; if(iso.includes('-') && !iso.includes('T')) { const [y,m,d]=iso.split('-'); return `${d}/${m}/${y}`; } return new Date(iso).toLocaleDateString(LOCALE, { timeZone: TIMEZONE }); };
+const fmtTime = (raw) => { if(!raw) return ''; if(raw.includes('T')) { try{return new Date(raw).toLocaleTimeString('en-GB',{timeZone:TIMEZONE,hour:'2-digit',minute:'2-digit'});}catch{return raw.substring(0,5);} } return raw.length>5?raw.substring(0,5):raw; };
+const getBogotaDateISO = () => { const d = new Date(new Date().toLocaleString("en-US", {timeZone: TIMEZONE})); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+
+// NUEVO: Normalizador de fechas para filtros (Maneja ISO, Texto y Fechas de Excel)
+const parseDateStr = (dateStr) => {
+    if (!dateStr) return '0000-00-00';
+    // Si ya viene como YYYY-MM-DD (ISO simple), devolverlo
+    if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) return dateStr;
+    // Si viene como ISO completo (YYYY-MM-DDTHH:mm...)
+    if (dateStr.includes('T')) return dateStr.split('T')[0];
+    // Si viene como DD/MM/YYYY (común en Sheets)
+    if (dateStr.includes('/')) {
+        const parts = dateStr.split('/');
+        if (parts.length === 3) {
+            // Asumimos DD/MM/YYYY
+            return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+        }
+    }
+    return dateStr; // Retorno por defecto
+};
+
+document.addEventListener('DOMContentLoaded', () => { if(!user) document.getElementById('loginScreen').style.display = 'flex'; else initApp(); });
 
 document.getElementById('loginForm').addEventListener('submit', async(e) => {
-    e.preventDefault();
-    
-    // Referencias a los inputs para manipular estilos
-    const uInput = document.getElementById('user');
-    const pInput = document.getElementById('pass');
-    
-    const u = uInput.value;
-    const p = pInput.value;
-
-    // Resetear estilos previos (quitar rojo si lo tienen)
-    uInput.style.borderColor = '';
-    pInput.style.borderColor = '';
-
-    try {
-        const res = await fetch('/api/login', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({user:u, pass:p})});
-        if(res.ok){
-            const d = await res.json();
-            localStorage.setItem('sidma_user', JSON.stringify(d.user));
-            location.reload();
-        } else { 
-            // --- ESTADO DE ERROR DE VALIDACIÓN ---
-            
-            // 1. Marcar bordes en rojo
-            uInput.style.borderColor = '#ef4444';
-            pInput.style.borderColor = '#ef4444';
-            
-            // 2. Limpiar campo de contraseña
-            pInput.value = '';
-            pInput.focus();
-
-            // 3. Mostrar Alerta de Error
-            Swal.fire({
-                title: 'Error de Acceso',
-                text: 'Usuario o contraseña incorrectos. Por favor verifique.',
-                icon: 'error',
-                confirmButtonColor: '#ef4444',
-                confirmButtonText: 'Reintentar'
-            });
-        }
-    } catch (e) { 
-        Swal.fire('Error de Conexión', 'No se pudo conectar con el servidor', 'error'); 
-    }
+    e.preventDefault(); const u = document.getElementById('user').value; const p = document.getElementById('pass').value;
+    try { const res = await fetch('/api/login', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({user:u, pass:p})}); if(res.ok){ const d = await res.json(); localStorage.setItem('sidma_user', JSON.stringify(d.user)); location.reload(); } else { Swal.fire({title:'Error', text:'Credenciales incorrectas', icon:'error'}); } } catch { Swal.fire('Error', 'Sin conexión', 'error'); }
 });
 
 async function initApp(){
-    document.getElementById('loginScreen').style.display='none';
-    document.getElementById('appLayout').style.display='block';
-    document.getElementById('uName').textContent = user.nombre;
-    document.getElementById('uRole').textContent = user.rol.toUpperCase();
-    
-    document.getElementById('btnOpenHistory').style.display = 'flex';
-
-    document.querySelectorAll('.role-section').forEach(el => el.style.display='none');
-    document.getElementById(`view-${user.rol}`).style.display='block';
-    
-    if(user.rol === 'operador') {
-        document.getElementById('cFecha').value = new Date().toISOString().split('T')[0];
-        addClienteBlock(); 
-    }
+    document.getElementById('loginScreen').style.display='none'; document.getElementById('appLayout').style.display='block';
+    document.getElementById('uName').textContent = user.nombre; document.getElementById('uRole').textContent = user.rol.toUpperCase();
+    document.querySelectorAll('.role-section').forEach(el => el.style.display='none'); document.getElementById(`view-${user.rol}`).style.display='block';
     await loadData();
 }
 
-window.refreshData = async () => {
-    const btn = document.getElementById('btnRefresh');
-    const icon = btn.querySelector('i');
-    const span = btn.querySelector('span');
-    btn.disabled = true; icon.classList.add('fa-spin'); span.textContent = 'Cargando...';
-    try {
-        await loadData(); 
-        icon.classList.remove('fa-spin','fa-rotate-right'); icon.classList.add('fa-check'); span.textContent = '¡Al día!';
-        btn.style.background = 'var(--green)'; btn.style.borderColor = 'var(--green)';
-    } catch (e) { span.textContent = 'Error'; btn.style.background = 'var(--danger)'; }
-    setTimeout(() => {
-        icon.classList.remove('fa-check'); icon.classList.add('fa-rotate-right'); span.textContent = 'Actualizar';
-        btn.style.background = ''; btn.style.borderColor = ''; btn.disabled = false;
-    }, 2000);
-};
+window.refreshData = async () => { await loadData(); Swal.fire({toast:true, position:'top-end', icon:'success', title:'Datos actualizados', timer:1500, showConfirmButton:false}); };
 
 async function loadData(){
-    const res = await fetch('/api/data');
-    const d = await res.json();
-    vehiculosList = d.vehiculos;
-    conductoresList = d.conductores;
-    rawData = (d.despachos || []).map(r => {
-        let item = {}; for(let k in r) item[k.toLowerCase().trim()] = r[k];
-        try { item.detalles = JSON.parse(item.detalles_clientes_json); } catch { item.detalles = []; }
-        try { item.gastos = JSON.parse(item.gastos_adicionales); } catch { item.gastos = []; }
-        return item;
-    });
+    const res = await fetch('/api/data'); const d = await res.json();
+    vehiculosList = d.vehiculos; conductoresList = d.conductores;
+    rawDespachos = (d.despachos || []).map(processRow);
+    rawPedidos = (d.pedidos || []).map(p => { let item = {...p}; try { item.productos = JSON.parse(item.productos_json); } catch { item.productos = []; } let t = 0; item.productos.forEach(x => t += parseFloat(x.kg_plan)||0); item.total_kg = t; return item; });
     renderViews();
 }
 
-function renderViews(){
-    if(user.rol === 'operador') renderOperador();
-    if(user.rol === 'admin') renderAdmin();
-    if(user.rol === 'conductor') renderConductor();
-}
+function processRow(r) { let item = {}; for(let k in r) item[k.toLowerCase().trim()] = r[k]; try { item.detalles = JSON.parse(item.detalles_clientes_json); } catch { item.detalles = []; } try { item.gastos = JSON.parse(item.gastos_adicionales); } catch { item.gastos = []; } return item; }
 
-// --- COMUNES ---
-window.borrarRuta = async (id) => {
-    const result = await Swal.fire({title: '¿Eliminar?', text: "Se borrará permanentemente", icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', confirmButtonText: 'Sí, borrar'});
-    if(result.isConfirmed) { await fetch(`/api/borrar/${id}`, { method: 'DELETE' }); loadData(); Swal.fire('Borrado', '', 'success'); if(isEditing) cancelEditMode(); }
-};
+function renderViews(){ if(user.rol === 'operador') renderOperador(); if(user.rol === 'admin') renderAdmin(); if(user.rol === 'conductor') renderConductor(); }
 
-// --- OPERADOR ---
-window.addClienteBlock = (name='', prods=[]) => {
-    const div = document.createElement('div'); div.className = 'client-block';
-    div.innerHTML = `<div class="block-header"><span>Cliente</span><button type="button" onclick="this.parentElement.parentElement.remove(); calcTotal()" class="btn-del small">X</button></div>
-    <input type="text" class="cl-name" placeholder="Nombre Cliente" value="${name}"><div class="prod-list"></div><button type="button" onclick="addProdRow(this)" class="btn-sec small">+ Producto</button>`;
-    document.getElementById('clientesContainer').appendChild(div);
-    const btn = div.querySelector('.btn-sec');
-    if(prods.length > 0) prods.forEach(p => addProdRow(btn, p.producto, p.kg));
-    else addProdRow(btn);
+// ==========================================
+// MÓDULO OPERADOR
+// ==========================================
+window.openPedidoModal = (id = null) => {
+    const modal = document.getElementById('modalPedido'); const form = document.getElementById('formPedido'); const container = document.getElementById('prodContainer');
+    form.reset(); container.innerHTML = ''; document.getElementById('pTotalKg').innerText = '0'; document.getElementById('editPedidoId').value = '';
+    if(id) {
+        const p = rawPedidos.find(x => x.id == id); if(!p) return;
+        document.getElementById('modalPedidoTitle').innerHTML = '<i class="fa-solid fa-pen-to-square"></i> Editar Pedido';
+        document.getElementById('editPedidoId').value = id; document.getElementById('pFecha').value = p.fecha.split('T')[0]; document.getElementById('pHora').value = fmtTime(p.hora); document.getElementById('pCliente').value = p.cliente; document.getElementById('pOrden').value = p.orden; document.getElementById('pObs').value = p.observaciones || '';
+        p.productos.forEach(prod => { addProdRow(container, prod.producto, prod.kg_plan); }); calcTotalPedido();
+    } else {
+        document.getElementById('modalPedidoTitle').innerHTML = '<i class="fa-solid fa-box-open"></i> Nuevo Pedido'; document.getElementById('pFecha').value = getBogotaDateISO(); addProdRow(container);
+    }
+    modal.style.display = 'flex';
 };
-window.addProdRow = (btn, name='', kg='') => {
+window.addProdRow = (containerOrBtn, name='', kg='') => {
+    let container = (containerOrBtn.id === 'prodContainer') ? containerOrBtn : document.getElementById('prodContainer');
     const row = document.createElement('div'); row.className = 'prod-row';
-    row.innerHTML = `<input type="text" class="pr-name" placeholder="Prod" style="flex:2" value="${name}"><input type="number" class="pr-kg" placeholder="Kg" oninput="calcTotal()" style="flex:1" value="${kg}"><button type="button" onclick="this.parentElement.remove(); calcTotal()" class="btn-del small">x</button>`;
-    btn.previousElementSibling.appendChild(row);
-    if(kg) calcTotal();
+    row.innerHTML = `<input type="text" class="pr-name" placeholder="Producto" style="flex:2" value="${name}" required><input type="number" class="pr-kg" placeholder="Kg" oninput="calcTotalPedido()" style="flex:1" value="${kg}" required><button type="button" onclick="this.parentElement.remove(); calcTotalPedido()" class="btn-del small">x</button>`;
+    container.appendChild(row);
 };
-window.calcTotal = () => { let t = 0; document.querySelectorAll('.pr-kg').forEach(i => t += parseFloat(i.value) || 0); document.getElementById('cTotalKg').innerText = t; };
-
-window.loadOrderToEdit = (id) => {
-    const r = rawData.find(x => x.id == id); if(!r) return;
-    isEditing = true; document.getElementById('editId').value = id;
-    document.getElementById('btnCancelEdit').style.display = 'block';
-    document.getElementById('btnSubmitOperador').textContent = 'ACTUALIZAR RUTA';
-    document.getElementById('btnSubmitOperador').style.background = '#f59e0b';
-    document.getElementById('cFecha').value = r.fecha_entrega.split('T')[0];
-    document.getElementById('cNombre').value = r.nombre_ruta;
-    document.getElementById('cObs').value = r.observaciones || '';
-    document.getElementById('clientesContainer').innerHTML = '';
-    r.detalles.forEach(c => addClienteBlock(c.cliente, c.productos));
-    calcTotal(); window.scrollTo({top:0, behavior:'smooth'});
-};
-window.cancelEditMode = () => {
-    isEditing = false; document.getElementById('btnCancelEdit').style.display = 'none';
-    document.getElementById('btnSubmitOperador').textContent = 'GUARDAR Y CREAR RUTA';
-    document.getElementById('btnSubmitOperador').style.background = '#3b82f6';
-    document.getElementById('formCrear').reset(); document.getElementById('clientesContainer').innerHTML = '';
-    addClienteBlock(); document.getElementById('cTotalKg').innerText = '0';
-};
-document.getElementById('formCrear').addEventListener('submit', async(e) => {
-    e.preventDefault();
-    const detalles = [];
-    document.querySelectorAll('.client-block').forEach(cb => {
-        const cName = cb.querySelector('.cl-name').value;
-        if(cName){
-            const prods = [];
-            cb.querySelectorAll('.prod-row').forEach(pr => prods.push({producto: pr.querySelector('.pr-name').value, kg: pr.querySelector('.pr-kg').value, estado: 'Pendiente'}));
-            detalles.push({ cliente: cName, productos: prods });
-        }
-    });
-    const body = {
-        fecha: document.getElementById('cFecha').value,
-        nombre_ruta: document.getElementById('cNombre').value,
-        total_kg: document.getElementById('cTotalKg').innerText,
-        detalles: JSON.stringify(detalles),
-        observaciones: document.getElementById('cObs').value
-    };
-    let url = isEditing ? `/api/editar/${document.getElementById('editId').value}` : '/api/crear';
-    let method = isEditing ? 'PUT' : 'POST';
+window.calcTotalPedido = () => { let t = 0; document.querySelectorAll('#prodContainer .pr-kg').forEach(i => t += parseFloat(i.value) || 0); document.getElementById('pTotalKg').innerText = fmtNum.format(t); };
+document.getElementById('formPedido').addEventListener('submit', async(e) => {
+    e.preventDefault(); const prods = []; document.querySelectorAll('#prodContainer .prod-row').forEach(pr => { const n = pr.querySelector('.pr-name').value; const k = pr.querySelector('.pr-kg').value; if(n && k) prods.push({ producto: n, kg_plan: k, kg_ent: k, estado: 'Pendiente' }); });
+    if(prods.length === 0) return Swal.fire('Error', 'Agrega al menos un producto', 'warning');
+    const body = { fecha: document.getElementById('pFecha').value, hora: document.getElementById('pHora').value, cliente: document.getElementById('pCliente').value, orden: document.getElementById('pOrden').value, observaciones: document.getElementById('pObs').value, productos: JSON.stringify(prods) };
+    const editId = document.getElementById('editPedidoId').value; const url = editId ? `/api/pedidos/${editId}` : '/api/pedidos'; const method = editId ? 'PUT' : 'POST';
     const res = await fetch(url, {method:method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
-    if(res.ok){ Swal.fire('Guardado', '', 'success'); cancelEditMode(); loadData(); }
+    if(res.ok) { Swal.fire('Guardado', editId ? 'Pedido actualizado' : 'Pedido creado', 'success'); document.getElementById('modalPedido').style.display = 'none'; loadData(); }
 });
-function renderOperador(){
-    const list = rawData.filter(x => x.estado === 'Creada');
-    const c = document.getElementById('listCreadas'); c.innerHTML = '';
-    list.forEach(r => {
-        c.innerHTML += `<div class="card item-card status-creada" style="cursor:pointer" onclick="loadOrderToEdit('${r.id}')">
-            <div style="display:flex; justify-content:space-between"><h4>${r.nombre_ruta}</h4><div><i class="fa-solid fa-pen" style="color:#f59e0b"></i></div></div>
-            <p>${r.fecha_entrega.slice(0,10)} | ${r.total_kg_ruta} Kg</p>
-            <div class="grid-2 mt">
-                <button onclick="event.stopPropagation(); openTicket('${r.id}')" class="btn-sec small">🖨️ Tiquete</button>
-                <button onclick="event.stopPropagation(); borrarRuta('${r.id}')" class="btn-del small">🗑️ Borrar</button>
-            </div>
-        </div>`;
+window.renderOperador = () => {
+    const c = document.getElementById('listPedidosOperador'); c.innerHTML = '';
+    rawPedidos.forEach(p => {
+        let prodsList = p.productos.map(x => `<li>${x.producto} (${x.kg_plan}kg)</li>`).join('');
+        c.innerHTML += `<div class="card item-card status-creada"><div style="display:flex; justify-content:space-between"><h4>${p.cliente}</h4><div><button onclick="openPedidoModal('${p.id}')" class="btn-sec small" style="color:var(--orange); border-color:var(--orange); margin-right:5px;"><i class="fa-solid fa-pen"></i></button><button onclick="borrarPedido('${p.id}')" class="btn-del small"><i class="fa-solid fa-trash"></i></button></div></div><p>Ord: ${p.orden || '--'} | ${fmtDate(p.fecha)} ${fmtTime(p.hora)}</p><ul style="font-size:0.8rem; padding-left:20px; color:#ccc;">${prodsList}</ul><div style="text-align:right; font-weight:bold; border-top:1px solid #444; padding-top:5px;">Total: ${fmtNum.format(p.total_kg)} Kg</div></div>`;
     });
-}
-
-// --- ADMIN ---
-function renderAdmin(){
-    const pen = rawData.filter(x => x.estado === 'Creada');
-    const asg = rawData.filter(x => x.estado === 'Asignada');
-    const cp = document.getElementById('listPorAsignar'); cp.innerHTML = '';
-    pen.forEach(r => {
-        cp.innerHTML += `<div class="card item-card status-creada">
-            <div style="display:flex; justify-content:space-between"><h4>${r.nombre_ruta}</h4><button onclick="borrarRuta('${r.id}')" class="btn-del small"><i class="fa-solid fa-trash"></i></button></div>
-            <p>${r.fecha_entrega.slice(0,10)} | ${r.total_kg_ruta} Kg</p>
-            <div class="grid-2 mt"><button onclick="openTicket('${r.id}')" class="btn-sec">🖨️ Ver</button><button onclick="openAsignar('${r.id}')" class="btn-primary">ASIGNAR</button></div>
-        </div>`;
-    });
-    const ca = document.getElementById('listAsignadas'); ca.innerHTML = '';
-    asg.forEach(r => ca.innerHTML += `<div class="card item-card status-asignada">
-        <div style="display:flex; justify-content:space-between"><h4>${r.nombre_ruta}</h4><button onclick="borrarRuta('${r.id}')" class="btn-del small"><i class="fa-solid fa-trash"></i></button></div>
-        <p>${r.placa_vehiculo} | ${r.conductor_asignado}</p>
-        <div class="grid-2 mt"><button onclick="openTicket('${r.id}')" class="btn-sec">🖨️ Ver</button><button onclick="openAsignar('${r.id}')" class="btn-sec" style="color:var(--orange); border-color:var(--orange)">✏️ Editar</button></div>
-    </div>`);
-}
-
-// --- ASIGNACIÓN CON DATOS VISIBLES ---
-window.openAsignar = (id) => {
-    const r = rawData.find(x => x.id == id); 
-    document.getElementById('asgId').value = id;
-    
-    // MOSTRAR RESUMEN Y OBSERVACIONES
-    const obs = r.observaciones && r.observaciones.trim() !== '' ? r.observaciones : '<em style="opacity:0.6">Sin observaciones</em>';
-    const cliCount = r.detalles.length;
-    document.getElementById('asgResumen').innerHTML = `
-        <div style="margin-bottom:5px"><strong>Ruta:</strong> ${r.nombre_ruta}</div>
-        <div style="margin-bottom:5px"><strong>Fecha:</strong> ${r.fecha_entrega.slice(0,10)} | <strong>Total:</strong> ${r.total_kg_ruta} Kg</div>
-        <div style="margin-bottom:5px"><strong>Clientes:</strong> ${cliCount}</div>
-        <div style="margin-top:8px; padding-top:5px; border-top:1px dashed #555; color:var(--orange)">
-            <strong><i class="fa-solid fa-circle-exclamation"></i> Obs:</strong> ${obs}
-        </div>
-    `;
-
-    const sp = document.getElementById('asgPlaca'); sp.innerHTML = '<option value="">Vehículo...</option>';
-    vehiculosList.forEach(v => sp.innerHTML += `<option value="${v.placa}" ${v.placa===r.placa_vehiculo?'selected':''}>${v.placa}</option>`);
-    const sc = document.getElementById('asgConductor'); sc.innerHTML = '<option value="">Conductor...</option>';
-    conductoresList.forEach(c => sc.innerHTML += `<option value="${c.nombre}" ${c.nombre===r.conductor_asignado?'selected':''}>${c.nombre}</option>`);
-    document.getElementById('asgTipo').value = r.tipo_comision || 'variable';
-    document.getElementById('asgValor').value = r.valor_tarifa || '';
-    document.getElementById('modalAsignar').style.display = 'flex';
 };
-window.submitAsignar = async() => {
-    const id = document.getElementById('asgId').value;
-    const body = { placa: document.getElementById('asgPlaca').value, conductor: document.getElementById('asgConductor').value, tipo_comision: document.getElementById('asgTipo').value, valor_tarifa: document.getElementById('asgValor').value };
-    await fetch(`/api/asignar/${id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
-    document.getElementById('modalAsignar').style.display = 'none'; loadData();
-};
+window.borrarPedido = async (id) => { if((await Swal.fire({title:'¿Borrar Pedido?', icon:'warning', showCancelButton:true})).isConfirmed) { await fetch(`/api/pedidos/${id}`, {method:'DELETE'}); loadData(); } };
 
-// --- CONDUCTOR ---
-function renderConductor(){
-    const l = rawData.filter(x => x.conductor_asignado === user.nombre && x.estado === 'Asignada');
-    const c = document.getElementById('listMisRutas'); c.innerHTML = '';
-    l.forEach(r => {
-        let details = ''; r.detalles.forEach(d => details += `<li>${d.cliente}</li>`);
-        c.innerHTML += `<div class="card item-card status-asignada"><h3>${r.nombre_ruta}</h3><p>${r.total_kg_ruta} Kg</p><ul style="font-size:0.8rem; color:#ccc; padding-left:20px">${details}</ul><div class="grid-2 mt"><button onclick="openTicket('${r.id}')" class="btn-sec">🖨️</button><button onclick="openFin('${r.id}')" class="btn-primary">ENTREGAR</button></div></div>`;
-    });
-}
-window.openFin = (id) => {
-    const r = rawData.find(x => x.id == id); document.getElementById('finId').value = id;
-    const b = document.getElementById('checklistProds'); b.innerHTML = '';
-    r.detalles.forEach((c,ic) => {
-        let h = `<div class="check-group"><strong>${c.cliente}</strong>`;
-        c.productos.forEach((p,ip) => h += `<div class="check-item"><span>${p.producto} (${p.kg}kg)</span><label class="toggle"><input type="checkbox" class="chk-dev" data-kg="${p.kg}" data-ic="${ic}" data-ip="${ip}" onchange="recalc()"><span class="slider"></span></label></div>`);
-        b.innerHTML += h + '</div>';
-    });
-    document.getElementById('gastosContainer').innerHTML=''; recalc(); document.getElementById('modalFinalizar').style.display='flex';
-};
-window.recalc = () => {
-    const r = rawData.find(x => x.id == document.getElementById('finId').value);
-    let kg = parseFloat(r.total_kg_ruta)||0; document.querySelectorAll('.chk-dev:checked').forEach(c => kg -= parseFloat(c.dataset.kg));
-    const tar = parseFloat(r.valor_tarifa)||0; let base = (r.tipo_comision === 'variable') ? kg*tar : tar;
-    let g = 0; document.querySelectorAll('.g-val').forEach(i => g += parseFloat(i.value)||0);
-    document.getElementById('finKg').innerText = kg.toFixed(1); document.getElementById('finBase').innerText = '$'+Math.round(base);
-    document.getElementById('finTotal').innerText = '$'+Math.round(base+g);
-};
-window.addGastoRow = () => {
-    const d = document.createElement('div'); d.className='grid-2 mini-grid'; d.innerHTML = `<input type="text" class="g-desc" placeholder="Desc."><input type="number" class="g-val" placeholder="$" oninput="recalc()">`; document.getElementById('gastosContainer').appendChild(d);
-};
-window.submitFinalizar = async() => {
-    const id = document.getElementById('finId').value; const r = rawData.find(x => x.id == id);
-    document.querySelectorAll('.chk-dev').forEach(c => r.detalles[c.dataset.ic].productos[c.dataset.ip].estado = c.checked?'Devuelto':'Entregado');
-    const g = []; document.querySelectorAll('#gastosContainer .grid-2').forEach(e => g.push({desc:e.querySelector('.g-desc').value, val:e.querySelector('.g-val').value}));
-    const fd = new FormData(); fd.append('detalles_actualizados', JSON.stringify(r.detalles)); fd.append('gastos_json', JSON.stringify(g)); fd.append('total_pagar', document.getElementById('finTotal').innerText.replace(/[$,]/g,''));
-    
-    // CAMBIO: La foto ahora es opcional.
-    if(document.getElementById('finFoto').files[0]) {
-        fd.append('foto', document.getElementById('finFoto').files[0]);
-    }
-    
-    Swal.fire({title:'Enviando', didOpen:()=>Swal.showLoading()}); await fetch(`/api/finalizar/${id}`, {method:'PUT', body:fd});
-    document.getElementById('modalFinalizar').style.display='none'; loadData(); Swal.fire('Hecho','','success');
-};
-
-// --- HISTORIAL ---
-window.openHistory = () => {
-    const d = new Date();
-    document.getElementById('histIni').value = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
-    document.getElementById('histFin').value = d.toISOString().split('T')[0];
-    const sp = document.getElementById('histPlaca'); sp.innerHTML = '<option value="">Todas</option>';
-    vehiculosList.forEach(v => sp.innerHTML += `<option value="${v.placa}">${v.placa}</option>`);
-    const sc = document.getElementById('histCond'); sc.innerHTML = '<option value="">Todos</option>';
-    conductoresList.forEach(c => sc.innerHTML += `<option value="${c.nombre}">${c.nombre}</option>`);
-    if(user.rol === 'conductor') { sc.value = user.nombre; sc.disabled = true; } else { sc.disabled = false; }
-    renderHistoryTable(); document.getElementById('modalHistory').style.display = 'flex';
-};
-
-window.renderHistoryTable = () => {
-    const ini = document.getElementById('histIni').value;
-    const fin = document.getElementById('histFin').value;
-    const pFilter = document.getElementById('histPlaca').value;
-    const cFilter = (user.rol === 'conductor') ? user.nombre : document.getElementById('histCond').value;
-    
-    historyData = rawData.filter(r => {
-        const d = r.fecha_entrega.split('T')[0];
-        const inDate = (!ini || d >= ini) && (!fin || d <= fin);
-        const inPlaca = !pFilter || r.placa_vehiculo === pFilter;
-        const inCond = !cFilter || r.conductor_asignado === cFilter;
-        return r.estado === 'Finalizada' && inDate && inPlaca && inCond;
-    });
-
-    let tKg = 0, tCom = 0;
-    const tbody = document.querySelector('#tableHistory tbody'); tbody.innerHTML = '';
-    historyData.forEach(r => {
-        let kgEntr = 0; r.detalles.forEach(c => c.productos.forEach(p => { if(p.estado!=='Devuelto') kgEntr += parseFloat(p.kg)||0; }));
-        const tarifa = parseFloat(r.valor_tarifa)||0;
-        const comision = (r.tipo_comision === 'variable') ? (kgEntr * tarifa) : tarifa;
-        tKg += kgEntr; tCom += comision;
-        
-        // CAMBIO: Botón de foto si existe evidencia
-        const btnFoto = r.evidencia_foto ? 
-            `<button onclick="verFoto('${r.evidencia_foto}')" class="btn-sec small" style="margin-right:5px; color:#3b82f6; border-color:#3b82f6;" title="Ver Foto">📷</button>` : '';
-
-        tbody.innerHTML += `<tr>
-            <td>${r.fecha_entrega.slice(0,10)}</td>
-            <td>${r.placa_vehiculo}</td>
-            <td>${r.conductor_asignado}</td>
-            <td>${kgEntr.toLocaleString()}</td>
-            <td>$${tarifa.toLocaleString()}</td>
-            <td>$${Math.round(comision).toLocaleString()}</td>
-            <td style="display:flex; justify-content:center; align-items:center;">
-                ${btnFoto}
-                <button onclick="openTicket('${r.id}')" class="btn-sec small" title="Imprimir">🖨️</button>
-            </td>
-        </tr>`;
-    });
-    document.getElementById('hCount').textContent = historyData.length;
-    document.getElementById('hKg').textContent = tKg.toLocaleString();
-    document.getElementById('hComision').textContent = '$' + tCom.toLocaleString();
-};
-
-// NUEVA FUNCIÓN: Ver Foto
-window.verFoto = (url) => {
-    Swal.fire({
-        imageUrl: url,
-        imageAlt: 'Evidencia',
-        width: 600,
-        imageWidth: '100%',
-        showCloseButton: true,
-        showConfirmButton: false,
-        background: '#1e293b', // Color de fondo oscuro acorde al tema
-        color: '#fff'
+// ==========================================
+// MÓDULO ADMIN: ARMAR RUTAS
+// ==========================================
+window.renderAdmin = () => {
+    const actives = document.getElementById('listRutasActivas'); actives.innerHTML = '';
+    rawDespachos.filter(x => x.estado === 'Asignada').forEach(r => {
+        actives.innerHTML += `<div class="card item-card status-asignada"><div style="display:flex; justify-content:space-between"><h4>${r.nombre_ruta}</h4><button onclick="borrarRuta('${r.id}')" class="btn-del small"><i class="fa-solid fa-trash"></i></button></div><p>${r.placa_vehiculo} | ${r.conductor_asignado}</p><p>${fmtNum.format(r.total_kg_ruta)} Kg | ${r.detalles.length} Entregas</p><div class="grid-2 mt"><button onclick="openTicket('${r.id}')" class="btn-sec">🖨️ Ver</button><button onclick="editRutaModal('${r.id}')" class="btn-sec" style="color:var(--orange); border-color:var(--orange)">✏️ Editar</button></div></div>`;
     });
 };
 
-window.exportHistoryCSV = () => {
-    let csv = "\uFEFFFECHA;PLACA;CONDUCTOR;KG ENTREGADOS;TARIFA;COMISION;PAGO TOTAL\n";
-    historyData.forEach(r => {
-        let kgEntr = 0; r.detalles.forEach(c => c.productos.forEach(p => { if(p.estado!=='Devuelto') kgEntr += parseFloat(p.kg)||0; }));
-        const tarifa = parseFloat(r.valor_tarifa)||0;
-        const comision = (r.tipo_comision === 'variable') ? (kgEntr * tarifa) : tarifa;
-        csv += `${r.fecha_entrega.slice(0,10)};${r.placa_vehiculo};${r.conductor_asignado};${kgEntr};${tarifa};${comision};${r.total_pagar_conductor}\n`;
-    });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8;'}));
-    a.download = `Historial_${new Date().toISOString().slice(0,10)}.csv`; a.click();
-};
-
-// --- TIQUETE CON OBSERVACIONES (FIX) ---
-window.generateTicketHTML = (r) => {
-    let listHTML = '';
+window.openCrearRutaModal = () => {
+    document.getElementById('formRutaAdmin').reset();
+    document.getElementById('rFecha').value = getBogotaDateISO();
+    document.getElementById('selCount').innerText = '0'; 
+    document.getElementById('selKg').innerText = '0';
     
-    r.detalles.forEach(c => {
-        listHTML += `<div style="margin-top:8px; font-weight:bold; border-bottom:1px solid #000; font-size:12px;">${c.cliente.toUpperCase()}</div>`;
-        c.productos.forEach(p => {
-            const isDev = p.estado === 'Devuelto';
-            const style = isDev ? 't-devuelto' : '';
-            const tag = isDev ? '<span class="t-tag-dev">[DEV]</span>' : '';
-            listHTML += `<div class="t-row ${style}" style="font-size:11px; padding-left:5px">
-                <span style="flex:1">- ${p.producto} ${tag}</span>
-                <span style="font-weight:bold">${p.kg} Kg</span>
-            </div>`;
-        });
+    const pool = document.getElementById('poolPedidosAdmin'); pool.innerHTML = '';
+    if(rawPedidos.length === 0) pool.innerHTML = '<p style="color:#777; font-style:italic; text-align:center; margin-top:50px;">No hay pedidos pendientes.</p>';
+    
+    rawPedidos.forEach(p => {
+        pool.innerHTML += `<div class="pedido-check-card"><label class="check-label"><input type="checkbox" class="chk-pedido" value="${p.id}" data-kg="${p.total_kg}" onchange="calcRutaAdmin()"><div><strong>${p.cliente}</strong> <small>(Ord: ${p.orden})</small><br><span style="font-size:0.8rem;">${fmtDate(p.fecha)} ${fmtTime(p.hora)} | <strong>${fmtNum.format(p.total_kg)} Kg</strong></span></div></label></div>`;
     });
 
-    let gastosHTML = '';
-    let gastosTotal = 0;
-    if(r.gastos && r.gastos.length) {
-        gastosHTML = `<div class="t-divider"></div><div class="t-bold" style="margin-top:5px">GASTOS ADICIONALES:</div>`;
-        r.gastos.forEach(g => { gastosHTML += `<div class="t-row"><span>${g.desc}</span><span>$${Number(g.val).toLocaleString()}</span></div>`; gastosTotal += Number(g.val); });
-    }
-
-    const tarifaVal = Number(r.valor_tarifa || 0);
-    let comisionVal = (r.tipo_comision === 'variable') ? (Number(r.total_kg_ruta) * tarifaVal) : tarifaVal;
-    const totalPagar = r.estado === 'Finalizada' ? Number(r.total_pagar_conductor) : (comisionVal + gastosTotal);
-    
-    // MOSTRAR OBSERVACIONES SI EXISTEN
-    const obsText = r.observaciones ? r.observaciones : '';
-    const obsHTML = obsText ? 
-        `<div style="margin-top:15px; border:1px dashed #000; padding:5px; font-size:11px; background:#eee;">
-            <strong>OBSERVACIONES:</strong><br>${obsText}
-         </div>` : '';
-
-    return `
-    <div class="t-header">
-        <h2 style="margin:0; font-size:12px">🌾Agrollanos Sas </h2>
-        <p style="margin:2px 0">NIT: 830104572</p>
-        <p style="font-weight:bold; font-size:14px; margin-top:5px">MANIFIESTO DE CARGA #${r.id.toString().slice(-4)}</p>
-    </div>
-    
-    <div style="font-size:12px; margin-bottom:10px;">
-        <div class="t-row"><span>Ruta:</span><strong>${r.nombre_ruta}</strong></div>
-        <div class="t-row"><span>Fecha:</span><span>${r.fecha_entrega.slice(0,10)}</span></div>
-        <div class="t-row"><span>Vehículo:</span><span>${r.placa_vehiculo||'---'}</span></div>
-        <div class="t-row"><span>Conductor:</span><span>${r.conductor_asignado||'---'}</span></div>
-    </div>
-    
-    <div class="t-divider"></div>
-    <div style="text-align:center;font-weight:bold; margin:5px 0;">DETALLE DE CARGA</div>
-    ${listHTML}
-    
-    <div class="t-divider"></div>
-    <div class="t-row" style="font-size:13px; margin-top:5px;"><strong>TOTAL CARGA:</strong><strong>${r.total_kg_ruta} Kg</strong></div>
-    
-    <div class="t-divider"></div>
-    <div class="t-row"><span>Tarifa (${r.tipo_comision||'-'}):</span><span>$${tarifaVal.toLocaleString()}</span></div>
-    <div class="t-row"><span>Comisión Base:</span><span>$${comisionVal.toLocaleString()}</span></div>
-    ${gastosHTML}
-    
-    <div class="t-divider"></div>
-    <div class="t-row" style="font-size:15px; margin-top:5px"><strong>TOTAL A PAGAR:</strong><strong>$${totalPagar.toLocaleString()}</strong></div>
-    
-    ${obsHTML}
-
-    <br><br><br>
-    
-    <div style="text-align:center; font-size:10px; color:#555">Generado por SIDMA LOG | ${new Date().toLocaleString()}</div>
-    `;
+    const sP = document.getElementById('rPlaca'); sP.innerHTML = '<option value="">Vehículo...</option>'; vehiculosList.forEach(v => sP.innerHTML += `<option value="${v.placa}">${v.placa}</option>`);
+    const sC = document.getElementById('rCond'); sC.innerHTML = '<option value="">Conductor...</option>'; conductoresList.forEach(c => sC.innerHTML += `<option value="${c.nombre}">${c.nombre}</option>`);
+    document.getElementById('modalCrearRuta').style.display = 'flex';
 };
 
-window.openTicket = (id) => {
-    const r = rawData.find(x => x.id == id);
-    const h = generateTicketHTML(r);
-    document.getElementById('ticketPreviewContent').innerHTML = h;
-    document.getElementById('printArea').innerHTML = h;
-    document.getElementById('modalTicket').style.display = 'flex';
+window.calcRutaAdmin = () => { let count = 0; let kg = 0; document.querySelectorAll('.chk-pedido:checked').forEach(c => { count++; kg += parseFloat(c.dataset.kg); }); document.getElementById('selCount').innerText = count; document.getElementById('selKg').innerText = fmtNum.format(kg); };
+
+document.getElementById('formRutaAdmin').addEventListener('submit', async(e) => {
+    e.preventDefault(); const chks = document.querySelectorAll('.chk-pedido:checked'); if(chks.length === 0) return Swal.fire('Atención', 'Selecciona al menos un pedido para la ruta', 'warning');
+    
+    const pedidosFull = []; const detallesRuta = []; let totalKgRuta = 0;
+    chks.forEach(chk => {
+        const id = chk.value; const p = rawPedidos.find(x => String(x.id) === String(id));
+        if(p) { pedidosFull.push(p); detallesRuta.push({ cliente: p.cliente, orden: p.orden, productos: p.productos }); totalKgRuta += parseFloat(p.total_kg); }
+    });
+
+    const body = { nombre_ruta: document.getElementById('rNombre').value, fecha: document.getElementById('rFecha').value, hora: document.getElementById('rHora').value, placa: document.getElementById('rPlaca').value, conductor: document.getElementById('rCond').value, tipo_comision: document.getElementById('rTipo').value, valor_tarifa: document.getElementById('rValor').value, observaciones: document.getElementById('rObs').value, total_kg: totalKgRuta, detalles: JSON.stringify(detallesRuta), pedidos_full: pedidosFull };
+    Swal.fire({title:'Creando Ruta...', didOpen:()=>Swal.showLoading()}); 
+    const res = await fetch('/api/crear_ruta', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+    if(res.ok) { Swal.fire('Éxito', 'Ruta creada y asignada', 'success'); document.getElementById('modalCrearRuta').style.display = 'none'; loadData(); }
+});
+
+window.editRutaModal = (id) => { const r = rawDespachos.find(x => x.id == id); document.getElementById('editRutaId').value = id; const sP = document.getElementById('editRutaPlaca'); sP.innerHTML = '<option value="">Vehículo...</option>'; vehiculosList.forEach(v => sP.innerHTML += `<option value="${v.placa}" ${v.placa===r.placa_vehiculo?'selected':''}>${v.placa}</option>`); const sC = document.getElementById('editRutaCond'); sC.innerHTML = '<option value="">Conductor...</option>'; conductoresList.forEach(c => sC.innerHTML += `<option value="${c.nombre}" ${c.nombre===r.conductor_asignado?'selected':''}>${c.nombre}</option>`); document.getElementById('editRutaTipo').value = r.tipo_comision; document.getElementById('editRutaValor').value = r.valor_tarifa; document.getElementById('modalEditRuta').style.display = 'flex'; };
+window.submitEditRuta = async() => { const id = document.getElementById('editRutaId').value; const body = { placa: document.getElementById('editRutaPlaca').value, conductor: document.getElementById('editRutaCond').value, tipo_comision: document.getElementById('editRutaTipo').value, valor_tarifa: document.getElementById('editRutaValor').value }; await fetch(`/api/editar_ruta/${id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}); document.getElementById('modalEditRuta').style.display='none'; loadData(); };
+window.borrarRuta = async (id) => { if((await Swal.fire({title:'¿Borrar Ruta?', text:'Los pedidos asociados volverán automáticamente a la lista de pendientes.', icon:'warning', showCancelButton:true})).isConfirmed){ await fetch(`/api/borrar_ruta/${id}`, {method:'DELETE'}); loadData(); Swal.fire('Ruta Borrada', 'Los pedidos han sido restaurados', 'success'); } };
+
+// CONDUCTOR Y COMUNES
+window.renderConductor = () => { const l = rawDespachos.filter(x => x.conductor_asignado === user.nombre && x.estado === 'Asignada'); const c = document.getElementById('listMisRutas'); c.innerHTML = ''; l.forEach(r => { let details = ''; r.detalles.forEach(d => details += `<li>${d.cliente} (Ord: ${d.orden || 'S/N'})</li>`); c.innerHTML += `<div class="card item-card status-asignada"><h3>${r.nombre_ruta}</h3><p><i class="fa-solid fa-truck"></i> ${r.placa_vehiculo} | <strong>${fmtNum.format(r.total_kg_ruta)} Kg</strong></p><ul style="font-size:0.8rem; color:#ccc; padding-left:20px">${details}</ul><div class="grid-2 mt"><button onclick="openTicket('${r.id}')" class="btn-sec">🖨️ Ver Tiquete</button><button onclick="openFin('${r.id}')" class="btn-primary">ENTREGAR / FINALIZAR</button></div></div>`; }); };
+window.openFin = (id) => { const r = rawDespachos.find(x => x.id == id); document.getElementById('finId').value = id; const b = document.getElementById('checklistProds'); b.innerHTML = ''; r.detalles.forEach((c,ic) => { let h = `<div class="check-group"><div style="font-weight:bold; color:var(--orange); display:flex; justify-content:space-between;"><span>${c.cliente}</span> <span>Ord: ${c.orden||'--'}</span></div>`; c.productos.forEach((p,ip) => { h += `<div class="check-item-cond"><div style="flex:2">${p.producto}</div><div style="flex:1; text-align:right; font-size:0.8rem; color:#aaa;">Plan: ${fmtNum.format(p.kg_plan)}Kg</div><div style="flex:1; text-align:right;"><input type="number" class="kg-ent-input" data-ic="${ic}" data-ip="${ip}" data-plan="${p.kg_plan}" value="${p.kg_plan}" oninput="recalc()"></div></div>`; }); b.innerHTML += h + '</div>'; }); document.getElementById('gastosContainer').innerHTML=''; recalc(); document.getElementById('modalFinalizar').style.display='flex'; };
+window.recalc = () => { const r = rawDespachos.find(x => x.id == document.getElementById('finId').value); let kgEntregadosTotal = 0; document.querySelectorAll('.kg-ent-input').forEach(inp => { kgEntregadosTotal += parseFloat(inp.value) || 0; }); const tar = parseFloat(r.valor_tarifa)||0; let base = (r.tipo_comision === 'variable') ? (kgEntregadosTotal * tar) : tar; let g = 0; document.querySelectorAll('.g-val').forEach(i => g += parseFloat(i.value)||0); document.getElementById('finKg').innerText = fmtNum.format(kgEntregadosTotal); document.getElementById('finBase').innerText = fmtMoney.format(base); document.getElementById('finTotal').innerText = fmtMoney.format(base+g); };
+window.addGastoRow = () => { const d = document.createElement('div'); d.className='grid-2 mini-grid'; d.innerHTML = `<input type="text" class="g-desc" placeholder="Desc."><input type="number" class="g-val" placeholder="$" oninput="recalc()">`; document.getElementById('gastosContainer').appendChild(d); };
+window.submitFinalizar = async() => { const id = document.getElementById('finId').value; const r = rawDespachos.find(x => x.id == id); document.querySelectorAll('.kg-ent-input').forEach(inp => { const ic = inp.dataset.ic; const ip = inp.dataset.ip; const real = parseFloat(inp.value) || 0; const plan = parseFloat(inp.dataset.plan) || 0; let status = 'Entregado'; if(real === 0) status = 'Devuelto'; else if(real < plan) status = 'Parcial'; else if(real > plan) status = 'Excedente'; r.detalles[ic].productos[ip].kg_ent = real; r.detalles[ic].productos[ip].estado = status; }); const g = []; document.querySelectorAll('#gastosContainer .grid-2').forEach(e => g.push({desc:e.querySelector('.g-desc').value, val:e.querySelector('.g-val').value})); const totalPagarRaw = document.getElementById('finTotal').innerText.replace(/[$.]/g,'').replace(',','.'); const totalKgRealRaw = document.getElementById('finKg').innerText.replace(/\./g,'').replace(',','.'); const fd = new FormData(); fd.append('detalles_actualizados', JSON.stringify(r.detalles)); fd.append('gastos_json', JSON.stringify(g)); fd.append('total_pagar', totalPagarRaw); fd.append('total_kg_real', totalKgRealRaw); if(document.getElementById('finFoto').files[0]) { fd.append('foto', document.getElementById('finFoto').files[0]); } Swal.fire({title:'Finalizando Ruta', didOpen:()=>Swal.showLoading()}); await fetch(`/api/finalizar/${id}`, {method:'PUT', body:fd}); document.getElementById('modalFinalizar').style.display='none'; loadData(); Swal.fire('Ruta Finalizada','','success'); };
+
+// HISTORIAL MEJORADO
+window.openHistory = async () => { 
+    Swal.fire({title:'Cargando...', didOpen:()=>Swal.showLoading()}); 
+    try { 
+        const res = await fetch('/api/historial'); 
+        const archivadas = await res.json(); 
+        historyData = archivadas.map(processRow); 
+        const isoStart = getBogotaDateISO().substring(0, 8) + '01'; 
+        document.getElementById('histIni').value = isoStart; 
+        document.getElementById('histFin').value = getBogotaDateISO(); 
+        const sp = document.getElementById('histPlaca'); sp.innerHTML = '<option value="">Todas</option>'; vehiculosList.forEach(v => sp.innerHTML += `<option value="${v.placa}">${v.placa}</option>`); 
+        const sc = document.getElementById('histCond'); sc.innerHTML = '<option value="">Todos</option>'; conductoresList.forEach(c => sc.innerHTML += `<option value="${c.nombre}">${c.nombre}</option>`); 
+        if(user.rol === 'conductor') { sc.value = user.nombre; sc.disabled = true; } else { sc.disabled = false; } 
+        renderHistoryTable(); 
+        Swal.close(); 
+        document.getElementById('modalHistory').style.display = 'flex'; 
+    } catch(e) { Swal.fire('Error', e.message, 'error'); } 
 };
-window.printNow = () => window.print();
-window.closeModal = (id) => document.getElementById(id).style.display='none';
-window.logout = () => { localStorage.removeItem('sidma_user'); location.reload(); };
+
+window.renderHistoryTable = () => { 
+    const ini = document.getElementById('histIni').value; 
+    const fin = document.getElementById('histFin').value; 
+    const pFilter = document.getElementById('histPlaca').value; 
+    const cFilter = (user.rol === 'conductor') ? user.nombre : document.getElementById('histCond').value; 
+    
+    const filtrados = historyData.filter(r => { 
+        // USAR EL NORMALIZADOR DE FECHA
+        const d = parseDateStr(r.fecha_entrega);
+        const inDate = (!ini || d >= ini) && (!fin || d <= fin); 
+        const inPlaca = !pFilter || r.placa_vehiculo === pFilter; 
+        const inCond = !cFilter || r.conductor_asignado === cFilter; 
+        return inDate && inPlaca && inCond; 
+    }); 
+    
+    let tKg = 0, tCom = 0; 
+    const tbody = document.querySelector('#tableHistory tbody'); tbody.innerHTML = ''; 
+    filtrados.forEach(r => { 
+        const kgReal = parseFloat(r.total_kg_entregados_real) || 0; 
+        const tarifa = parseFloat(r.valor_tarifa)||0; 
+        const comision = (r.tipo_comision === 'variable') ? (kgReal * tarifa) : tarifa; 
+        tKg += kgReal; tCom += comision; 
+        const btnFoto = r.evidencia_foto ? `<button onclick="verFoto('${r.evidencia_foto}')" class="btn-sec small" title="Ver Foto">📷</button>` : ''; 
+        tbody.innerHTML += `<tr><td>${fmtDate(r.fecha_entrega)}<br><small>${r.nombre_ruta}</small></td><td>${r.placa_vehiculo}</td><td>${r.conductor_asignado}</td><td>${fmtNum.format(kgReal)}</td><td>${fmtMoney.format(tarifa)}</td><td>${fmtMoney.format(comision)}</td><td style="display:flex; justify-content:center; gap:5px;">${btnFoto}<button onclick="openTicket('${r.id}')" class="btn-sec small">🖨️</button></td></tr>`; 
+    }); 
+    document.getElementById('hCount').textContent = filtrados.length; 
+    document.getElementById('hKg').textContent = fmtNum.format(tKg); 
+    document.getElementById('hComision').textContent = fmtMoney.format(tCom); 
+    window.currentHistoryFiltered = filtrados; 
+};
+
+window.exportHistoryCSV = () => { const dataToExport = window.currentHistoryFiltered || historyData; let csv = "\uFEFFFECHA;RUTA;PLACA;CONDUCTOR;KG REALES;TARIFA;COMISION;GASTOS ADICIONALES;PAGO TOTAL\n"; dataToExport.forEach(r => { const kgReal = parseFloat(r.total_kg_entregados_real) || 0; const tarifa = parseFloat(r.valor_tarifa)||0; const comision = (r.tipo_comision === 'variable') ? (kgReal * tarifa) : tarifa; let gastosStr = "Sin Gastos"; if(r.gastos && r.gastos.length > 0) { gastosStr = r.gastos.map(g => `${g.desc}: $${g.val}`).join(' | '); } csv += `${r.fecha_entrega.slice(0,10)};${r.nombre_ruta};${r.placa_vehiculo};${r.conductor_asignado};${kgReal};${tarifa};${comision};${gastosStr};${r.total_pagar_conductor}\n`; }); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8;'})); a.download = `Historial.csv`; a.click(); };
+window.generateTicketHTML = (r) => { let listHTML = ''; r.detalles.forEach(c => { listHTML += `<div style="margin-top:8px; font-weight:bold; border-bottom:1px solid #000; font-size:12px; display:flex; justify-content:space-between;"><span>${c.cliente.toUpperCase()}</span> <span>Ord: ${c.orden||'--'}</span></div>`; c.productos.forEach(p => { const kgPlan = parseFloat(p.kg_plan) || 0; const kgEnt = (p.kg_ent !== undefined) ? parseFloat(p.kg_ent) : kgPlan; let statusTag = ''; if(kgEnt === 0) statusTag = '<span class="t-tag-dev">[DEVUELTO]</span>'; else if(kgEnt < kgPlan) statusTag = '<span class="t-tag-dev">[PARCIAL]</span>'; const style = (kgEnt === 0) ? 't-devuelto' : ''; listHTML += `<div class="t-row ${style}" style="font-size:11px; padding-left:5px"><span style="flex:2">- ${p.producto} ${statusTag}</span><span style="font-weight:bold">${fmtNum.format(kgEnt)} / ${fmtNum.format(kgPlan)} Kg</span></div>`; }); }); let gastosHTML = ''; let gastosTotal = 0; if(r.gastos && r.gastos.length) { gastosHTML = `<div class="t-divider"></div><div class="t-bold" style="margin-top:5px">GASTOS ADICIONALES:</div>`; r.gastos.forEach(g => { gastosHTML += `<div class="t-row"><span>${g.desc}</span><span>${fmtMoney.format(g.val)}</span></div>`; gastosTotal += Number(g.val); }); } const kgRealTotal = parseFloat(r.total_kg_entregados_real) || r.total_kg_ruta; const tarifaVal = Number(r.valor_tarifa || 0); let comisionVal = (r.tipo_comision === 'variable') ? (kgRealTotal * tarifaVal) : tarifaVal; const totalPagar = r.estado === 'Finalizada' ? Number(r.total_pagar_conductor) : (comisionVal + gastosTotal); const obsText = r.observaciones ? r.observaciones : ''; const obsHTML = obsText ? `<div style="margin-top:15px; border:1px dashed #000; padding:5px; font-size:11px; background:#eee;"><strong>OBSERVACIONES:</strong><br>${obsText}</div>` : ''; const h = fmtTime(r.hora_entrega) || ''; return `<div class="t-header"><h2 style="margin:0; font-size:12px">🌾LOGISTICA "AGROLLANOS"</h2><p style="margin:2px 0"> NIT: 830104572.</p><p style="font-weight:bold; font-size:14px; margin-top:5px">MANIFIESTO DE CARGA #${r.id.toString().slice(-4)}</p></div><div style="font-size:12px; margin-bottom:10px;"><div class="t-row"><span>Ruta:</span><strong>${r.nombre_ruta}</strong></div><div class="t-row"><span>Fecha:</span><span>${fmtDate(r.fecha_entrega)} ${h}</span></div><div class="t-row"><span>Vehículo:</span><span>${r.placa_vehiculo||'---'}</span></div><div class="t-row"><span>Conductor:</span><span>${r.conductor_asignado||'---'}</span></div></div><div class="t-divider"></div><div style="text-align:center;font-weight:bold; margin:5px 0;">DETALLE DE CARGA</div>${listHTML}<div class="t-divider"></div><div class="t-row" style="font-size:13px; margin-top:5px;"><strong>TOTAL ENTREGADO:</strong><strong>${fmtNum.format(kgRealTotal)} Kg</strong></div><div class="t-divider"></div><div class="t-row"><span>Tarifa (${r.tipo_comision||'-'}):</span><span>${fmtMoney.format(tarifaVal)}</span></div><div class="t-row"><span>Comisión Base:</span><span>${fmtMoney.format(comisionVal)}</span></div>${gastosHTML}<div class="t-divider"></div><div class="t-row" style="font-size:15px; margin-top:5px"><strong>TOTAL A PAGAR:</strong><strong>${fmtMoney.format(totalPagar)}</strong></div>${obsHTML}<br><br><div style="text-align:center; font-size:10px; color:#555">Enrutado por el SidmaLog Agrollanos| ${new Date().toLocaleString(LOCALE, { timeZone: TIMEZONE })}</div>`; };
+window.openTicket = (id) => { const r = rawDespachos.find(x => x.id == id) || historyData.find(x => x.id == id); const h = generateTicketHTML(r); document.getElementById('ticketPreviewContent').innerHTML = h; document.getElementById('printArea').innerHTML = h; document.getElementById('modalTicket').style.display = 'flex'; };
+window.printNow = () => window.print(); window.closeModal = (id) => document.getElementById(id).style.display='none'; window.logout = () => { localStorage.removeItem('sidma_user'); location.reload(); }; window.verFoto = (url) => { Swal.fire({imageUrl: url, imageAlt: 'Evidencia', width: 600, showConfirmButton: false, background: '#1e293b', color: '#fff', showCloseButton:true}); };
