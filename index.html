@@ -134,7 +134,8 @@
                     <div><label>Hora Aprox</label><input type="time" id="pHora" required></div>
                 </div>
                 <div class="grid-2">
-                    <div><label>Cliente</label><input type="text" id="pCliente" placeholder="Nombre Cliente" required></div>
+                    <!-- AQUI: Agregamos list="listClientes" para autocompletado -->
+                    <div><label>Cliente</label><input type="text" id="pCliente" placeholder="Nombre Cliente" list="listClientes" autocomplete="off" required></div>
                     <div><label>Nº Orden</label><input type="text" id="pOrden" placeholder="Orden Compra"></div>
                 </div>
                 <label>Productos</label>
@@ -161,6 +162,14 @@
             </div>
             <div class="hist-summary"><div>Rutas: <strong id="hCount">0</strong></div><div>Kg: <strong id="hKg">0</strong></div><div>Pago: <strong id="hComision">$0</strong></div></div>
             <div class="hist-table-wrap"><table class="hist-table" id="tableHistory"><thead><tr><th>FECHA</th><th>PLACA</th><th>CONDUCTOR</th><th>KG REAL</th><th>PAGO</th><th>ACCIONES</th></tr></thead><tbody></tbody></table></div>
+            
+            <!-- NUEVO: CONTROLES DE PAGINACIÓN -->
+            <div class="pagination-controls">
+                <button onclick="changeHistoryPage(-1)" class="btn-sec small" id="btnPrevHist">Anterior</button>
+                <span id="pageIndicator" style="font-size: 0.9rem; align-self: center;">Página 1</span>
+                <button onclick="changeHistoryPage(1)" class="btn-sec small" id="btnNextHist">Siguiente</button>
+            </div>
+
         </div>
     </div>
 
@@ -192,6 +201,10 @@
         </div>
     </div>
     <div id="printArea"></div>
+    
+    <!-- LISTAS DE AUTOCOMPLETADO (MEMORIA DEL SISTEMA) -->
+    <datalist id="listClientes"></datalist>
+    <datalist id="listProductos"></datalist>
 
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="app.js"></script>

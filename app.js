@@ -5,17 +5,24 @@ let vehiculosList = [];
 let conductoresList = [];
 let historyData = [];
 
+// Variables Paginación
+let curHistPage = 1;
+const itemsPerPage = 5;
+let currentHistoryFiltered = []; // Para almacenar el filtrado actual
+
+// Variables Memoria (Autocompletado)
+let knownClients = new Set();
+let knownProducts = new Set();
+
 const LOCALE = 'es-CO';
 const TIMEZONE = 'America/Bogota';
 const fmtMoney = new Intl.NumberFormat(LOCALE, { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0 });
 const fmtNum = new Intl.NumberFormat(LOCALE, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 
-// Formateadores visuales
 const fmtDate = (iso) => { if(!iso) return ''; if(iso.includes('-') && !iso.includes('T')) { const [y,m,d]=iso.split('-'); return `${d}/${m}/${y}`; } return new Date(iso).toLocaleDateString(LOCALE, { timeZone: TIMEZONE }); };
 const fmtTime = (raw) => { if(!raw) return ''; if(raw.includes('T')) { try{return new Date(raw).toLocaleTimeString('en-GB',{timeZone:TIMEZONE,hour:'2-digit',minute:'2-digit'});}catch{return raw.substring(0,5);} } return raw.length>5?raw.substring(0,5):raw; };
 const getBogotaDateISO = () => { const d = new Date(new Date().toLocaleString("en-US", {timeZone: TIMEZONE})); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
 
-// Normalizador de fechas
 const parseDateStr = (dateStr) => {
     if (!dateStr) return '0000-00-00';
     if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) return dateStr;
@@ -48,7 +55,52 @@ async function loadData(){
     vehiculosList = d.vehiculos; conductoresList = d.conductores;
     rawDespachos = (d.despachos || []).map(processRow);
     rawPedidos = (d.pedidos || []).map(p => { let item = {...p}; try { item.productos = JSON.parse(item.productos_json); } catch { item.productos = []; } let t = 0; item.productos.forEach(x => t += parseFloat(x.kg_plan)||0); item.total_kg = t; return item; });
+    
+    // AUTO-APRENDIZAJE: Extraer datos para autocompletado
+    extractUniqueData();
+    
     renderViews();
+}
+
+// NUEVO: Función para extraer clientes y productos únicos
+function extractUniqueData() {
+    // Escanear Pedidos Pendientes
+    rawPedidos.forEach(p => {
+        if(p.cliente) knownClients.add(p.cliente);
+        if(p.productos) p.productos.forEach(prod => { if(prod.producto) knownProducts.add(prod.producto); });
+    });
+
+    // Escanear Rutas Activas
+    rawDespachos.forEach(r => {
+        if(r.detalles) {
+            r.detalles.forEach(d => {
+                if(d.cliente) knownClients.add(d.cliente);
+                if(d.productos) d.productos.forEach(prod => { if(prod.producto) knownProducts.add(prod.producto); });
+            });
+        }
+    });
+
+    // Escanear Historial (si está cargado)
+    historyData.forEach(r => {
+        if(r.detalles) {
+            r.detalles.forEach(d => {
+                if(d.cliente) knownClients.add(d.cliente);
+                if(d.productos) d.productos.forEach(prod => { if(prod.producto) knownProducts.add(prod.producto); });
+            });
+        }
+    });
+
+    updateAutocompleteLists();
+}
+
+function updateAutocompleteLists() {
+    const dlC = document.getElementById('listClientes');
+    dlC.innerHTML = '';
+    knownClients.forEach(c => { const opt = document.createElement('option'); opt.value = c; dlC.appendChild(opt); });
+
+    const dlP = document.getElementById('listProductos');
+    dlP.innerHTML = '';
+    knownProducts.forEach(p => { const opt = document.createElement('option'); opt.value = p; dlP.appendChild(opt); });
 }
 
 function processRow(r) { let item = {}; for(let k in r) item[k.toLowerCase().trim()] = r[k]; try { item.detalles = JSON.parse(item.detalles_clientes_json); } catch { item.detalles = []; } try { item.gastos = JSON.parse(item.gastos_adicionales); } catch { item.gastos = []; } return item; }
@@ -71,12 +123,15 @@ window.openPedidoModal = (id = null) => {
     }
     modal.style.display = 'flex';
 };
+
 window.addProdRow = (containerOrBtn, name='', kg='') => {
     let container = (containerOrBtn.id === 'prodContainer') ? containerOrBtn : document.getElementById('prodContainer');
     const row = document.createElement('div'); row.className = 'prod-row';
-    row.innerHTML = `<input type="text" class="pr-name" placeholder="Producto" style="flex:2" value="${name}" required><input type="number" class="pr-kg" placeholder="Kg" oninput="calcTotalPedido()" style="flex:1" value="${kg}" required><button type="button" onclick="this.parentElement.remove(); calcTotalPedido()" class="btn-del small">x</button>`;
+    // CAMBIO: Agregado list="listProductos" para autocompletado
+    row.innerHTML = `<input type="text" class="pr-name" placeholder="Producto" style="flex:2" value="${name}" list="listProductos" autocomplete="off" required><input type="number" class="pr-kg" placeholder="Kg" oninput="calcTotalPedido()" style="flex:1" value="${kg}" required><button type="button" onclick="this.parentElement.remove(); calcTotalPedido()" class="btn-del small">x</button>`;
     container.appendChild(row);
 };
+
 window.calcTotalPedido = () => { let t = 0; document.querySelectorAll('#prodContainer .pr-kg').forEach(i => t += parseFloat(i.value) || 0); document.getElementById('pTotalKg').innerText = fmtNum.format(t); };
 document.getElementById('formPedido').addEventListener('submit', async(e) => {
     e.preventDefault(); const prods = []; document.querySelectorAll('#prodContainer .prod-row').forEach(pr => { const n = pr.querySelector('.pr-name').value; const k = pr.querySelector('.pr-kg').value; if(n && k) prods.push({ producto: n, kg_plan: k, kg_ent: k, estado: 'Pendiente' }); });
@@ -87,45 +142,23 @@ document.getElementById('formPedido').addEventListener('submit', async(e) => {
     if(res.ok) { Swal.fire('Guardado', editId ? 'Pedido actualizado' : 'Pedido creado', 'success'); document.getElementById('modalPedido').style.display = 'none'; loadData(); }
 });
 
-// RENDERIZADO OPERADOR (MODIFICADO: INCLUYE RUTAS ACTIVAS)
 window.renderOperador = () => {
-    // 1. Pedidos Pendientes (Igual que antes)
     const c = document.getElementById('listPedidosOperador'); c.innerHTML = '';
     rawPedidos.forEach(p => {
         let prodsList = p.productos.map(x => `<li>${x.producto} (${x.kg_plan}kg)</li>`).join('');
         c.innerHTML += `<div class="card item-card status-creada"><div style="display:flex; justify-content:space-between"><h4>${p.cliente}</h4><div><button onclick="openPedidoModal('${p.id}')" class="btn-sec small" style="color:var(--orange); border-color:var(--orange); margin-right:5px;"><i class="fa-solid fa-pen"></i></button><button onclick="borrarPedido('${p.id}')" class="btn-del small"><i class="fa-solid fa-trash"></i></button></div></div><p>Ord: ${p.orden || '--'} | ${fmtDate(p.fecha)} ${fmtTime(p.hora)}</p><ul style="font-size:0.8rem; padding-left:20px; color:#ccc;">${prodsList}</ul><div style="text-align:right; font-weight:bold; border-top:1px solid #444; padding-top:5px;">Total: ${fmtNum.format(p.total_kg)} Kg</div></div>`;
     });
 
-    // 2. Rutas Activas (NUEVO)
     const activesOp = document.getElementById('listRutasActivasOperador');
     if(activesOp) {
         activesOp.innerHTML = '';
         const rutasActivas = rawDespachos.filter(x => x.estado === 'Asignada');
-        
-        if(rutasActivas.length === 0) {
-            activesOp.innerHTML = '<p style="color:#777; font-style:italic; text-align:center;">No hay rutas asignadas actualmente.</p>';
-        }
-
+        if(rutasActivas.length === 0) { activesOp.innerHTML = '<p style="color:#777; font-style:italic; text-align:center;">No hay rutas asignadas actualmente.</p>'; }
         rutasActivas.forEach(r => {
-            activesOp.innerHTML += `
-            <div class="card item-card status-asignada">
-                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                    <h4>${r.nombre_ruta}</h4>
-                    <span class="badge" style="background:var(--primary); font-size:0.7rem;">EN RUTA</span>
-                </div>
-                <p><i class="fa-solid fa-truck"></i> ${r.placa_vehiculo} | ${r.conductor_asignado}</p>
-                <p><strong>${fmtNum.format(r.total_kg_ruta)} Kg</strong> | ${r.detalles.length} Puntos de Entrega</p>
-                
-                <div class="mt">
-                    <button onclick="openTicket('${r.id}')" class="btn-sec" style="width:100%">
-                        🖨️ Ver Planilla / Tiquete
-                    </button>
-                </div>
-            </div>`;
+            activesOp.innerHTML += `<div class="card item-card status-asignada"><div style="display:flex; justify-content:space-between; align-items:flex-start;"><h4>${r.nombre_ruta}</h4><span class="badge" style="background:var(--primary); font-size:0.7rem;">EN RUTA</span></div><p><i class="fa-solid fa-truck"></i> ${r.placa_vehiculo} | ${r.conductor_asignado}</p><p><strong>${fmtNum.format(r.total_kg_ruta)} Kg</strong> | ${r.detalles.length} Puntos de Entrega</p><div class="mt"><button onclick="openTicket('${r.id}')" class="btn-sec" style="width:100%">🖨️ Ver Planilla / Tiquete</button></div></div>`;
         });
     }
 };
-
 window.borrarPedido = async (id) => { if((await Swal.fire({title:'¿Borrar Pedido?', icon:'warning', showCancelButton:true})).isConfirmed) { await fetch(`/api/pedidos/${id}`, {method:'DELETE'}); loadData(); } };
 
 // ==========================================
@@ -223,7 +256,6 @@ window.submitFinalizar = async() => {
     fd.append('detalles_actualizados', JSON.stringify(r.detalles)); 
     fd.append('gastos_json', JSON.stringify(g)); 
     fd.append('total_pagar', totalPagarRaw); 
-    
     fd.append('total_kg_entregados_real', totalKgRealRaw); 
     
     if(document.getElementById('finFoto').files[0]) { fd.append('foto', document.getElementById('finFoto').files[0]); } 
@@ -243,6 +275,9 @@ window.openHistory = async () => {
         const archivadas = await res.json(); 
         historyData = archivadas.map(processRow); 
         
+        // Cargar también clientes/productos del historial a la memoria
+        extractUniqueData();
+
         const isoStart = getBogotaDateISO().substring(0, 8) + '01'; 
         document.getElementById('histIni').value = isoStart; 
         document.getElementById('histFin').value = getBogotaDateISO(); 
@@ -250,6 +285,8 @@ window.openHistory = async () => {
         const sp = document.getElementById('histPlaca'); sp.innerHTML = '<option value="">Todas</option>'; vehiculosList.forEach(v => sp.innerHTML += `<option value="${v.placa}">${v.placa}</option>`); 
         const sc = document.getElementById('histCond'); sc.innerHTML = '<option value="">Todos</option>'; conductoresList.forEach(c => sc.innerHTML += `<option value="${c.nombre}">${c.nombre}</option>`); 
         if(user.rol === 'conductor') { sc.value = user.nombre; sc.disabled = true; } else { sc.disabled = false; } 
+        
+        curHistPage = 1; // Resetear a página 1
         renderHistoryTable(); 
         Swal.close(); 
         document.getElementById('modalHistory').style.display = 'flex'; 
@@ -269,23 +306,52 @@ window.renderHistoryTable = () => {
         const inCond = !cFilter || r.conductor_asignado === cFilter; 
         return inDate && inPlaca && inCond; 
     }); 
+    currentHistoryFiltered = filtrados;
+
+    // --- LÓGICA DE PAGINACIÓN ---
+    const totalItems = filtrados.length;
+    const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
+    if (curHistPage > totalPages) curHistPage = totalPages;
+    if (curHistPage < 1) curHistPage = 1;
+
+    const startIdx = (curHistPage - 1) * itemsPerPage;
+    const endIdx = startIdx + itemsPerPage;
+    const pageData = filtrados.slice(startIdx, endIdx);
+
+    // Actualizar controles UI
+    document.getElementById('pageIndicator').innerText = `Página ${curHistPage} de ${totalPages}`;
+    document.getElementById('btnPrevHist').disabled = (curHistPage === 1);
+    document.getElementById('btnNextHist').disabled = (curHistPage === totalPages);
     
     let tKg = 0, tCom = 0; 
+    // Calcular totales SOLO de lo filtrado (o de todo, según preferencia, usualmente totales de filtro)
+    // Aquí calculo totales de TODO lo filtrado, no solo la página visible
+    filtrados.forEach(r => {
+        const kg = parseFloat(r.total_kg_entregados_real) || 0; 
+        const tar = parseFloat(r.valor_tarifa)||0; 
+        const com = (r.tipo_comision === 'variable') ? (kg * tar) : tar; 
+        tKg += kg; tCom += com;
+    });
+
     const tbody = document.querySelector('#tableHistory tbody'); tbody.innerHTML = ''; 
-    filtrados.forEach(r => { 
+    pageData.forEach(r => { 
         const kgReal = parseFloat(r.total_kg_entregados_real) || 0; 
         const tarifa = parseFloat(r.valor_tarifa)||0; 
         const comision = (r.tipo_comision === 'variable') ? (kgReal * tarifa) : tarifa; 
-        tKg += kgReal; tCom += comision; 
         const btnFoto = r.evidencia_foto ? `<button onclick="verFoto('${r.evidencia_foto}')" class="btn-sec small" title="Ver Foto">📷</button>` : ''; 
         const fechaMostrar = r.fecha_entrega ? fmtDate(r.fecha_entrega) : '<span style="color:#666;font-size:0.8em">S/F</span>';
 
         tbody.innerHTML += `<tr><td>${fechaMostrar}<br><small>${r.nombre_ruta}</small></td><td>${r.placa_vehiculo}</td><td>${r.conductor_asignado}</td><td>${fmtNum.format(kgReal)}</td><td>${fmtMoney.format(tarifa)}</td><td>${fmtMoney.format(comision)}</td><td style="display:flex; justify-content:center; gap:5px;">${btnFoto}<button onclick="openTicket('${r.id}')" class="btn-sec small">🖨️</button></td></tr>`; 
     }); 
+    
     document.getElementById('hCount').textContent = filtrados.length; 
     document.getElementById('hKg').textContent = fmtNum.format(tKg); 
     document.getElementById('hComision').textContent = fmtMoney.format(tCom); 
-    window.currentHistoryFiltered = filtrados; 
+};
+
+window.changeHistoryPage = (delta) => {
+    curHistPage += delta;
+    renderHistoryTable();
 };
 
 window.exportHistoryCSV = () => { const dataToExport = window.currentHistoryFiltered || historyData; let csv = "\uFEFFFECHA;RUTA;PLACA;CONDUCTOR;KG REALES;TARIFA;COMISION;GASTOS ADICIONALES;PAGO TOTAL\n"; dataToExport.forEach(r => { const kgReal = parseFloat(r.total_kg_entregados_real) || 0; const tarifa = parseFloat(r.valor_tarifa)||0; const comision = (r.tipo_comision === 'variable') ? (kgReal * tarifa) : tarifa; let gastosStr = "Sin Gastos"; if(r.gastos && r.gastos.length > 0) { gastosStr = r.gastos.map(g => `${g.desc}: $${g.val}`).join(' | '); } csv += `${r.fecha_entrega.slice(0,10)};${r.nombre_ruta};${r.placa_vehiculo};${r.conductor_asignado};${kgReal};${tarifa};${comision};${gastosStr};${r.total_pagar_conductor}\n`; }); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8;'})); a.download = `Historial.csv`; a.click(); };

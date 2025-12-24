@@ -47,6 +47,21 @@ label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 5px; }
 .modal-wide { max-width: 900px; } 
 .modal-footer { display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end; }
 
+/* NUEVO: ESTILOS PAGINACIÓN */
+.pagination-controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 15px;
+    margin-top: 15px;
+    padding-top: 10px;
+    border-top: 1px solid #334155;
+}
+.pagination-controls button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .hist-table-wrap { overflow-x: auto; margin-top: 15px; border: 1px solid #334155; border-radius: 5px; }
 .hist-table { width: 100%; border-collapse: collapse; min-width: 600px; }
 .hist-table th { background: #0f172a; padding: 10px; text-align: left; font-size: 0.85rem; color: #cbd5e1; }
