@@ -581,7 +581,8 @@ document.getElementById('formRutaAdmin').addEventListener('submit', async(e) => 
         const p = rawPedidos.find(x => String(x.id) === String(chk.value));
         if(p) { 
             pedidosFull.push(p); 
-            detallesRuta.push({ cliente: p.cliente, orden: p.orden, productos: p.productos }); 
+            // NUEVO: Guardamos la fecha del pedido original en el detalle
+            detallesRuta.push({ cliente: p.cliente, orden: p.orden, productos: p.productos, fecha_original: p.fecha }); 
             totalKgRuta += parseFloat(p.total_kg); 
         }
     });
@@ -788,17 +789,29 @@ window.verFoto = (url) => {
     Swal.fire({imageUrl: url, imageAlt: 'Evidencia', width: 600, showConfirmButton: false, background: '#1e293b', color: '#fff', showCloseButton:true}); 
 };
 
-// VISTA PREVIA Y WHATSAPP
+// VISTA PREVIA Y WHATSAPP (ACTUALIZADO CON FECHA DE PEDIDO Y HORA DE CARGUE)
 window.generateTicketHTML = (r) => {
     let listHTML = '';
     r.detalles.forEach(c => {
-        listHTML += `<div style="margin-top:8px; font-weight:bold; border-bottom:1px solid #000; font-size:12px; display:flex; justify-content:space-between;"><span>${c.cliente.toUpperCase()}</span><span>Ord: ${c.orden||'--'}</span></div>`;
+        // Mostramos la fecha original del pedido si existe
+        const fPedido = c.fecha_original ? `<div style="font-size:10px; color:#555">F. Pedido: ${fmtDate(c.fecha_original)}</div>` : '';
+        listHTML += `
+        <div style="margin-top:8px; border-bottom:1px solid #000; padding-bottom:2px;">
+            <div style="font-weight:bold; font-size:12px; display:flex; justify-content:space-between;">
+                <span>${c.cliente.toUpperCase()}</span>
+                <span>Ord: ${c.orden||'--'}</span>
+            </div>
+            ${fPedido}
+        </div>`;
+        
         c.productos.forEach(p => {
             const kgEnt = (p.kg_ent !== undefined) ? parseFloat(p.kg_ent) : parseFloat(p.kg_plan);
             listHTML += `<div class="t-row" style="font-size:11px; padding-left:5px"><span>- ${p.producto}</span><span>${fmtNum.format(kgEnt)} Kg</span></div>`;
         });
     });
-    const h_cargue = fmtTime(r.hora_entrega) || '--:--';
+    
+    // Priorizamos la hora de salida guardada (hora) sobre la de entrega (hora_entrega)
+    const h_cargue = fmtTime(r.hora) || fmtTime(r.hora_entrega) || '--:--';
     
     return `
     <div class="t-header">
@@ -807,8 +820,8 @@ window.generateTicketHTML = (r) => {
     </div>
     <div style="font-size:12px; margin-bottom:10px;">
         <div class="t-row"><span>Ruta:</span><strong>${r.nombre_ruta}</strong></div>
-        <div class="t-row"><span>Salida:</span><span>${fmtDate(r.fecha)} hora: ${h_cargue}</span></div>
-        <div class="t-row"><span>Estado:</span><span>${r.estado.toUpperCase()}</span></div>
+        <div class="t-row"><span>F. Salida:</span><span>${fmtDate(r.fecha)}</span></div>
+        <div class="t-row"><span>H. Cargue:</span><span>${h_cargue}</span></div>
         <div class="t-row"><span>Vehículo:</span><span>${r.placa_vehiculo||'---'}</span></div>
         <div class="t-row"><span>Conductor:</span><span>${r.conductor_asignado||'---'}</span></div>
     </div>
@@ -833,18 +846,20 @@ window.openTicket = (id) => {
 window.sendWhatsAppTicket = () => {
     if (!currentTicketRoute) return;
     const r = currentTicketRoute;
-    const fecha = fmtDate(r.fecha);
-    const hora = fmtTime(r.hora_entrega) || '--:--';
+    const fechaRuta = fmtDate(r.fecha);
+    const horaCargue = fmtTime(r.hora) || fmtTime(r.hora_entrega) || '--:--';
     
     let msg = `*MANIFIESTO DE CARGA #${r.id.toString().slice(-4)}*\n`;
-    msg += `📅 *Salida:* ${fecha} hora: ${hora}\n`;
-    msg += `🛞 *${r.conductor_asignado}*\n`;
-    msg += `🚛 *${r.placa_vehiculo}*\n`;
+    msg += `📅 *F. Salida:* ${fechaRuta}\n`;
+    msg += `⏰ *H. Cargue:* ${horaCargue}\n`;
+    msg += `🛞 *Conductor:* ${r.conductor_asignado}\n`;
+    msg += `🚛 *Placa:* ${r.placa_vehiculo}\n`;
     msg += `📍 *Ruta:* ${r.nombre_ruta}\n\n`;
     
     msg += `📦 *DETALLE DE CARGA:*\n`;
     r.detalles.forEach(c => {
-        msg += `• *${c.cliente.toUpperCase()}* (Ord: ${c.orden || 'S/N'})\n`;
+        const fechaOriginal = c.fecha_original ? ` (${fmtDate(c.fecha_original)})` : '';
+        msg += `• *${c.cliente.toUpperCase()}* - Ord: ${c.orden || 'S/N'}${fechaOriginal}\n`;
         c.productos.forEach(p => {
             msg += `   - ${p.producto}: ${fmtNum.format(parseFloat(p.kg_plan))} Kg\n`;
         });
