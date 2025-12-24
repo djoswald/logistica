@@ -256,7 +256,30 @@ function renderOperador() {
     }
 }
 
-window.borrarPedido = async (id) => { if((await Swal.fire({title:'¿Borrar Pedido?', icon:'warning', showCancelButton:true})).isConfirmed) { await fetch(`/api/pedidos/${id}`, {method:'DELETE'}); loadData(); } };
+// LÓGICA DE BORRADO DE PEDIDOS (Operador y Admin)
+window.borrarPedido = async (id) => { 
+    const result = await Swal.fire({
+        title: '¿Eliminar Pedido?',
+        text: "Esta acción no se puede deshacer.",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#334155',
+        confirmButtonText: 'Sí, eliminar',
+        cancelButtonText: 'Cancelar'
+    });
+    
+    if(result.isConfirmed) { 
+        Swal.fire({title: 'Borrando...', didOpen: () => Swal.showLoading()});
+        const res = await fetch(`/api/pedidos/${id}`, {method:'DELETE'});
+        if(res.ok) {
+            Swal.fire('Eliminado', 'El pedido ha sido borrado correctamente.', 'success');
+            loadData();
+        } else {
+            Swal.fire('Error', 'No se pudo eliminar el pedido.', 'error');
+        }
+    } 
+};
 
 // ADMIN
 function renderAdmin() {
@@ -272,23 +295,240 @@ function renderAdmin() {
     });
 }
 
+// LÓGICA DE EDICIÓN DE RUTAS (Admin)
+window.editRutaModal = (id) => {
+    const r = rawDespachos.find(x => x.id == id);
+    if(!r) return;
+
+    document.getElementById('editRutaId').value = id;
+    
+    const sP = document.getElementById('editRutaPlaca');
+    sP.innerHTML = '<option value="">Vehículo...</option>';
+    vehiculosList.forEach(v => {
+        sP.innerHTML += `<option value="${v.placa}" ${v.placa === r.placa_vehiculo ? 'selected' : ''}>${v.placa}</option>`;
+    });
+
+    const sC = document.getElementById('editRutaCond');
+    sC.innerHTML = '<option value="">Conductor...</option>';
+    conductoresList.forEach(c => {
+        sC.innerHTML += `<option value="${c.nombre}" ${c.nombre === r.conductor_asignado ? 'selected' : ''}>${c.nombre}</option>`;
+    });
+
+    document.getElementById('editRutaTipo').value = r.tipo_comision || 'fija';
+    document.getElementById('editRutaValor').value = r.valor_tarifa || 0;
+    
+    document.getElementById('modalEditRuta').style.display = 'flex';
+};
+
+window.submitEditRuta = async () => {
+    const id = document.getElementById('editRutaId').value;
+    const body = {
+        placa: document.getElementById('editRutaPlaca').value,
+        conductor: document.getElementById('editRutaCond').value,
+        tipo_comision: document.getElementById('editRutaTipo').value,
+        valor_tarifa: document.getElementById('editRutaValor').value
+    };
+
+    if(!body.placa || !body.conductor) {
+        return Swal.fire('Atención', 'Selecciona vehículo y conductor', 'warning');
+    }
+
+    Swal.fire({title: 'Actualizando ruta...', didOpen: () => Swal.showLoading()});
+    const res = await fetch(`/api/editar_ruta/${id}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body)
+    });
+
+    if(res.ok) {
+        Swal.fire('Éxito', 'Ruta actualizada correctamente', 'success');
+        closeModal('modalEditRuta');
+        loadData();
+    } else {
+        Swal.fire('Error', 'No se pudo actualizar la ruta', 'error');
+    }
+};
+
+window.borrarRuta = async (id) => {
+    const result = await Swal.fire({
+        title: '¿Anular esta Ruta?',
+        text: "Los pedidos volverán a estar pendientes para ser asignados a otra ruta.",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#334155',
+        confirmButtonText: 'Sí, anular ruta',
+        cancelButtonText: 'Cancelar'
+    });
+
+    if(result.isConfirmed) {
+        Swal.fire({title: 'Anulando ruta...', didOpen: () => Swal.showLoading()});
+        const res = await fetch(`/api/borrar_ruta/${id}`, {method:'DELETE'});
+        if(res.ok) {
+            Swal.fire('Ruta Anulada', 'La ruta fue eliminada y los pedidos han sido restaurados.', 'success');
+            loadData();
+        } else {
+            Swal.fire('Error', 'No se pudo anular la ruta.', 'error');
+        }
+    }
+};
+
 window.openCrearRutaModal = () => {
     document.getElementById('formRutaAdmin').reset();
     document.getElementById('rFecha').value = getBogotaDateISO();
     document.getElementById('rHora').value = new Date().toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
+    
+    document.getElementById('vehCapacidad').innerText = '---';
+    document.getElementById('overloadWarning').style.display = 'none';
+    document.getElementById('selKg').style.color = 'var(--green)';
+
     const pool = document.getElementById('poolPedidosAdmin'); pool.innerHTML = '';
     rawPedidos.forEach(p => {
-        pool.innerHTML += `<div class="pedido-check-card"><label class="check-label">
-            <input type="checkbox" class="chk-pedido" value="${p.id}" data-kg="${p.total_kg}" onchange="calcRutaAdmin()">
-            <div><strong>${p.cliente}</strong> (Ord: ${p.orden})<br><span>${fmtDate(p.fecha)} | <strong>${fmtNum.format(p.total_kg)} Kg</strong></span></div>
-        </label></div>`;
+        pool.innerHTML += `<div class="pedido-check-card">
+            <label class="check-label">
+                <input type="checkbox" class="chk-pedido" value="${p.id}" data-kg="${p.total_kg}" onchange="calcRutaAdmin()">
+                <div>
+                    <strong>${p.cliente}</strong> (Ord: ${p.orden})<br>
+                    <span>${fmtDate(p.fecha)} | <strong>${fmtNum.format(p.total_kg)} Kg</strong></span>
+                </div>
+            </label>
+            <button onclick="window.splitPedidoModal('${p.id}')" class="btn-sec small" title="Fraccionar Peso" style="margin-left:auto; border-color:var(--orange); color:var(--orange);">✂️</button>
+        </div>`;
     });
     const sP = document.getElementById('rPlaca'); sP.innerHTML = '<option value="">Vehículo...</option>'; vehiculosList.forEach(v => sP.innerHTML += `<option value="${v.placa}">${v.placa}</option>`);
     const sC = document.getElementById('rCond'); sC.innerHTML = '<option value="">Conductor...</option>'; conductoresList.forEach(c => sC.innerHTML += `<option value="${c.nombre}">${c.nombre}</option>`);
     document.getElementById('modalCrearRuta').style.display = 'flex';
 };
 
-// ACTUALIZACIÓN: Ahora concatena observaciones de pedidos seleccionados
+// ACTUALIZACIÓN: FRACCIONAMIENTO POR PESO (KG) CON CREACIÓN DE PEDIDO B Y ACTUALIZACIÓN DE A
+window.splitPedidoModal = async (id) => {
+    const p = rawPedidos.find(x => String(x.id) === String(id));
+    if (!p) return;
+
+    let html = `<p style="font-size:0.9rem; margin-bottom:10px;">Indica cuántos Kg de cada producto quieres mover al <strong>segundo vehículo</strong>:</p><div style="text-align:left; max-height:350px; overflow-y:auto; border:1px solid #444; border-radius:5px; padding:10px;">`;
+    p.productos.forEach((item, index) => {
+        html += `<div style="padding:10px 0; border-bottom:1px solid #333;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                <span style="font-weight:bold;">${item.producto}</span>
+                <span style="color:var(--primary);">${fmtNum.format(item.kg_plan)} Kg Total</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px;">
+                <label style="font-size:0.8rem; color:#aaa;">Mover:</label>
+                <input type="number" class="split-weight-input" data-index="${index}" data-max="${item.kg_plan}" 
+                       value="0" min="0" max="${item.kg_plan}" 
+                       style="flex:1; background:#0f172a; border:1px solid #444; color:white; padding:5px; border-radius:4px;">
+                <span style="font-size:0.8rem; color:#aaa;">Kg</span>
+            </div>
+        </div>`;
+    });
+    html += `</div>`;
+
+    const result = await Swal.fire({
+        title: 'Fraccionar Pedido',
+        html: html,
+        showCancelButton: true,
+        confirmButtonText: '✂️ CORTAR Y ACTUALIZAR VENTA',
+        cancelButtonText: 'Cancelar',
+        background: '#1e293b',
+        color: '#f8fafc',
+        preConfirm: () => {
+            const inputs = document.querySelectorAll('.split-weight-input');
+            const data = [];
+            let totalMoved = 0;
+            let totalRemaining = 0;
+
+            inputs.forEach(input => {
+                const moved = parseFloat(input.value) || 0;
+                const max = parseFloat(input.dataset.max);
+                const idx = parseInt(input.dataset.index);
+                
+                if (moved > max) {
+                    Swal.showValidationMessage(`No puedes mover más de ${max} Kg en ${p.productos[idx].producto}`);
+                }
+                
+                data.push({ index: idx, moved, remaining: max - moved });
+                totalMoved += moved;
+                totalRemaining += (max - moved);
+            });
+
+            if (totalMoved <= 0) {
+                Swal.showValidationMessage('Debes mover al menos un poco de peso al segundo vehículo.');
+            }
+            if (totalRemaining <= 0) {
+                Swal.showValidationMessage('No puedes mover el 100% de la carga. Para eso usa el pedido completo.');
+            }
+
+            return data;
+        }
+    });
+
+    if (result.isConfirmed && result.value) {
+        const splitData = result.value;
+        const productosParteA = [];
+        const productosParteB = [];
+
+        splitData.forEach(item => {
+            const originalProd = p.productos[item.index];
+            
+            // Si queda algo en el pedido original (Parte A)
+            if (item.remaining > 0) {
+                productosParteA.push({
+                    ...originalProd,
+                    kg_plan: item.remaining,
+                    kg_ent: item.remaining,
+                    estado: 'Pendiente'
+                });
+            }
+
+            // Si se movió algo al nuevo pedido (Parte B)
+            if (item.moved > 0) {
+                productosParteB.push({
+                    ...originalProd,
+                    kg_plan: item.moved,
+                    kg_ent: item.moved,
+                    estado: 'Pendiente'
+                });
+            }
+        });
+
+        Swal.fire({title: 'Procesando fraccionamiento...', didOpen: () => Swal.showLoading()});
+
+        try {
+            // 1. Crear el nuevo pedido con la fracción (Parte B)
+            const bodyNew = { 
+                fecha: p.fecha.split('T')[0], 
+                hora: p.hora, 
+                cliente: p.cliente, 
+                orden: p.orden + "-B", 
+                observaciones: (p.observaciones || "") + " (Fracción de carga)", 
+                productos: JSON.stringify(productosParteB) 
+            };
+            const resB = await fetch('/api/pedidos', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(bodyNew)});
+
+            // 2. Actualizar el pedido original con el remanente (Parte A)
+            const bodyUpdate = { 
+                fecha: p.fecha.split('T')[0], 
+                hora: p.hora, 
+                cliente: p.cliente, 
+                orden: p.orden + "-A", 
+                observaciones: p.observaciones || "", 
+                productos: JSON.stringify(productosParteA) 
+            };
+            const resA = await fetch(`/api/pedidos/${p.id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(bodyUpdate)});
+
+            if (resB.ok && resA.ok) {
+                await loadData();
+                Swal.fire('Éxito', 'Pedido fraccionado. Se han generado dos partes (A y B) para asignar.', 'success');
+                window.openCrearRutaModal(); // Recargar modal para mostrar los pedidos "picados"
+            } else {
+                throw new Error("Error en la comunicación con el servidor");
+            }
+        } catch (e) {
+            Swal.fire('Error', 'Ocurrió un error al fraccionar la carga: ' + e.message, 'error');
+        }
+    }
+};
+
 window.calcRutaAdmin = () => {
     let count = 0, kg = 0; 
     let combinedObs = "";
@@ -300,9 +540,34 @@ window.calcRutaAdmin = () => {
             combinedObs += `${p.cliente}: ${p.observaciones} | `;
         }
     }); 
+    
     document.getElementById('selCount').innerText = count; 
-    document.getElementById('selKg').innerText = fmtNum.format(kg);
-    document.getElementById('rObs').value = combinedObs; // Muestra la construcción de obs en el modal
+    const kgLabel = document.getElementById('selKg');
+    kgLabel.innerText = fmtNum.format(kg);
+    document.getElementById('rObs').value = combinedObs;
+
+    const placa = document.getElementById('rPlaca').value;
+    const vehiculo = vehiculosList.find(v => v.placa === placa);
+    const capLabel = document.getElementById('vehCapacidad');
+    const warning = document.getElementById('overloadWarning');
+
+    if (vehiculo) {
+        const capacidad = vehiculo.capacidad || 0;
+        capLabel.innerText = fmtNum.format(capacidad);
+        if (capacidad > 0 && kg > capacidad) {
+            kgLabel.style.color = '#ef4444';
+            capLabel.style.color = '#ef4444';
+            warning.style.display = 'block';
+        } else {
+            kgLabel.style.color = 'var(--green)';
+            capLabel.style.color = 'inherit';
+            warning.style.display = 'none';
+        }
+    } else {
+        capLabel.innerText = '---';
+        warning.style.display = 'none';
+        kgLabel.style.color = 'var(--green)';
+    }
 };
 
 document.getElementById('formRutaAdmin').addEventListener('submit', async(e) => {
@@ -397,6 +662,114 @@ window.submitFinalizar = async() => {
     fd.append('total_kg_entregados_real', document.getElementById('finKg').innerText.replace(/\./g,'').replace(',','.'));
     if(document.getElementById('finFoto').files[0]) fd.append('foto', document.getElementById('finFoto').files[0]);
     await fetch(`/api/finalizar/${id}`, {method:'PUT', body:fd}); closeModal('modalFinalizar'); loadData(); Swal.fire('Ruta Finalizada','','success');
+};
+
+// --- MÓDULO HISTORIAL (RESTAURADO) ---
+window.openHistory = async () => { 
+    Swal.fire({title:'Cargando historial...', didOpen:()=>Swal.showLoading()}); 
+    try { 
+        const res = await fetch('/api/historial'); 
+        const archivadas = await res.json(); 
+        historyData = archivadas.map(processRow); 
+        extractUniqueData();
+
+        const isoStart = getBogotaDateISO().substring(0, 8) + '01'; 
+        document.getElementById('histIni').value = isoStart; 
+        document.getElementById('histFin').value = getBogotaDateISO(); 
+        
+        const sp = document.getElementById('histPlaca'); sp.innerHTML = '<option value="">Todas</option>'; vehiculosList.forEach(v => sp.innerHTML += `<option value="${v.placa}">${v.placa}</option>`); 
+        const sc = document.getElementById('histCond'); sc.innerHTML = '<option value="">Todos</option>'; conductoresList.forEach(c => sc.innerHTML += `<option value="${c.nombre}">${c.nombre}</option>`); 
+        
+        if(user.rol === 'conductor') { sc.value = user.nombre; sc.disabled = true; } else { sc.disabled = false; } 
+        
+        curHistPage = 1; 
+        renderHistoryTable(); 
+        Swal.close(); 
+        document.getElementById('modalHistory').style.display = 'flex'; 
+    } catch(e) { Swal.fire('Error', e.message, 'error'); } 
+};
+
+window.renderHistoryTable = () => { 
+    const ini = document.getElementById('histIni').value; 
+    const fin = document.getElementById('histFin').value; 
+    const pFilter = document.getElementById('histPlaca').value; 
+    const cFilter = (user.rol === 'conductor') ? user.nombre : document.getElementById('histCond').value; 
+    
+    const filtrados = historyData.filter(r => { 
+        const d = parseDateStr(r.fecha_entrega || r.fecha || '');
+        const inDate = (!ini || d >= ini) && (!fin || d <= fin); 
+        const inPlaca = !pFilter || r.placa_vehiculo === pFilter; 
+        const inCond = !cFilter || r.conductor_asignado === cFilter; 
+        return inDate && inPlaca && inCond; 
+    }); 
+    currentHistoryFiltered = filtrados;
+
+    const totalItems = filtrados.length;
+    const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
+    if (curHistPage > totalPages) curHistPage = totalPages;
+    if (curHistPage < 1) curHistPage = 1;
+
+    const startIdx = (curHistPage - 1) * itemsPerPage;
+    const pageData = filtrados.slice(startIdx, startIdx + itemsPerPage);
+
+    document.getElementById('pageIndicator').innerText = `Página ${curHistPage} de ${totalPages}`;
+    document.getElementById('btnPrevHist').disabled = (curHistPage === 1);
+    document.getElementById('btnNextHist').disabled = (curHistPage === totalPages);
+    
+    let tKg = 0, tCom = 0; 
+    filtrados.forEach(r => {
+        const kg = parseFloat(r.total_kg_entregados_real) || 0; 
+        const tar = parseFloat(r.valor_tarifa)||0; 
+        const com = (r.tipo_comision === 'variable') ? (kg * tar) : tar; 
+        tKg += kg; tCom += com;
+    });
+
+    const tbody = document.querySelector('#tableHistory tbody'); tbody.innerHTML = ''; 
+    pageData.forEach(r => { 
+        const kgReal = parseFloat(r.total_kg_entregados_real) || 0; 
+        const tarifa = parseFloat(r.valor_tarifa)||0; 
+        const comision = (r.tipo_comision === 'variable') ? (kgReal * tarifa) : tarifa; 
+        const btnFoto = r.evidencia_foto ? `<button onclick="verFoto('${r.evidencia_foto}')" class="btn-sec small" title="Ver Foto">📷</button>` : ''; 
+        const fechaMostrar = r.fecha_entrega ? fmtDate(r.fecha_entrega) : fmtDate(r.fecha);
+
+        tbody.innerHTML += `<tr>
+            <td>${fechaMostrar}<br><small>${r.nombre_ruta}</small></td>
+            <td>${r.placa_vehiculo}</td>
+            <td>${r.conductor_asignado}</td>
+            <td>${fmtNum.format(kgReal)}</td>
+            <td>${fmtMoney.format(tarifa)}</td>
+            <td>${fmtMoney.format(comision)}</td>
+            <td style="display:flex; justify-content:center; gap:5px;">
+                ${btnFoto}
+                <button onclick="openTicket('${r.id}')" class="btn-sec small" title="Ver Tiquete">🖨️</button>
+            </td>
+        </tr>`; 
+    }); 
+    
+    document.getElementById('hCount').textContent = filtrados.length; 
+    document.getElementById('hKg').textContent = fmtNum.format(tKg); 
+    document.getElementById('hComision').textContent = fmtMoney.format(tCom); 
+};
+
+window.changeHistoryPage = (delta) => { curHistPage += delta; renderHistoryTable(); };
+
+window.exportHistoryCSV = () => { 
+    const dataToExport = window.currentHistoryFiltered || historyData; 
+    let csv = "\uFEFFFECHA;RUTA;PLACA;CONDUCTOR;KG REALES;TARIFA;COMISION;GASTOS;PAGO TOTAL\n"; 
+    dataToExport.forEach(r => { 
+        const kgReal = parseFloat(r.total_kg_entregados_real) || 0; 
+        const tarifa = parseFloat(r.valor_tarifa)||0; 
+        const comision = (r.tipo_comision === 'variable') ? (kgReal * tarifa) : tarifa; 
+        csv += `${r.fecha_entrega || r.fecha};${r.nombre_ruta};${r.placa_vehiculo};${r.conductor_asignado};${kgReal};${tarifa};${comision};${(r.gastos||[]).length};${r.total_pagar_conductor}\n`; 
+    }); 
+    const a = document.createElement('a'); 
+    a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8;'})); 
+    a.download = `Historial_Agrollanos.csv`; 
+    a.click(); 
+};
+
+window.verFoto = (url) => { 
+    Swal.fire({imageUrl: url, imageAlt: 'Evidencia', width: 600, showConfirmButton: false, background: '#1e293b', color: '#fff', showCloseButton:true}); 
 };
 
 // VISTA PREVIA Y WHATSAPP
