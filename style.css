@@ -83,42 +83,43 @@ label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 5px; }
     /* Layout más fluido y vertical */
     .app-container {
         padding: 10px;
-        padding-bottom: 60px;
+        padding-bottom: 50px;
         width: 100%;
     }
 
     /* Header apilado verticalmente */
     header {
         flex-direction: column;
-        gap: 15px;
+        gap: 13px; /* Reducido un 10-15% */
         text-align: center;
-        padding: 15px 10px;
+        padding: 12px 9px; /* Reducido */
     }
 
     .user-info {
         width: 100%;
         justify-content: center;
         flex-wrap: wrap;
-        gap: 10px;
+        gap: 9px;
     }
 
-    /* Botones más grandes para el dedo */
+    /* Botones más grandes para el dedo, pero reducidos un 10% respecto a la versión anterior */
     button, .btn-primary, .btn-sec, .btn-del, .btn-refresh, .btn-hist {
-        min-height: 48px; /* Altura mínima ergonómica para touch */
-        font-size: 16px; /* Evita zoom automático en iOS inputs */
-        padding: 10px 15px;
+        min-height: 43px; /* Antes 48px */
+        font-size: 14.5px; /* Antes 16px */
+        padding: 9px 13px; /* Antes 10px 15px */
     }
 
     /* Inputs más amigables al tacto */
     input, select, textarea {
-        font-size: 16px; 
-        min-height: 45px;
+        font-size: 14.5px; /* Antes 16px */
+        min-height: 40px; /* Antes 45px */
+        padding: 10px;
     }
 
     /* Convertir grids de 2 columnas en 1 sola columna vertical */
     .grid-2 {
         grid-template-columns: 1fr;
-        gap: 15px;
+        gap: 13px; /* Antes 15px */
     }
 
     /* Tarjetas ocupan todo el ancho */
@@ -130,7 +131,7 @@ label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 5px; }
     .header-row {
         flex-direction: column;
         align-items: stretch !important; /* Botones ocupan todo el ancho */
-        gap: 15px;
+        gap: 13px; /* Antes 15px */
         text-align: center;
     }
 
@@ -142,14 +143,14 @@ label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 5px; }
     /* Modales full width en móvil */
     .modal-box {
         width: 95%;
-        padding: 15px;
+        padding: 13px; /* Antes 15px */
         max-height: 95vh;
-        margin: 10px;
+        margin: 9px; /* Antes 10px */
     }
     
     .modal-footer {
         flex-direction: column-reverse; /* Botón principal arriba en móviles */
-        gap: 10px;
+        gap: 9px;
     }
 
     .modal-footer button {
@@ -162,13 +163,13 @@ label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 5px; }
     }
     
     #poolPedidosAdmin {
-        max-height: 250px; /* Reducir altura para que quepa en pantalla móvil */
+        max-height: 220px; /* Reducido de 250px */
     }
 
     /* Resumen de historial apilado */
     .hist-summary {
         flex-direction: column;
-        gap: 10px;
+        gap: 9px;
         text-align: center;
     }
 
@@ -185,6 +186,6 @@ label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 5px; }
         flex: 1 !important;
     }
     .prod-row button {
-        flex: 0 0 40px;
+        flex: 0 0 36px; /* Reducido de 40px */
     }
 }
