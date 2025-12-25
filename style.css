@@ -47,7 +47,7 @@ label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 5px; }
 .modal-wide { max-width: 900px; } 
 .modal-footer { display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end; }
 
-/* NUEVO: ESTILOS PAGINACIÓN */
+/* PAGINACIÓN */
 .pagination-controls {
     display: flex;
     justify-content: center;
@@ -60,6 +60,27 @@ label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 5px; }
 .pagination-controls button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+/* ALERTA PEDIDOS PENDIENTES (Alto Contraste) */
+#msgPedidosPendientes {
+    background: #dc2626 !important; /* Rojo fuerte */
+    color: white !important;        /* Letras blancas */
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    font-weight: bold;
+    font-size: 1.1rem;
+    text-align: center;
+    display: none;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    border: 1px solid rgba(255,255,255,0.2);
+    animation: pulse 2s infinite; /* Para que palpite suavemente */
+}
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.02); }
+    100% { transform: scale(1); }
 }
 
 .hist-table-wrap { overflow-x: auto; margin-top: 15px; border: 1px solid #334155; border-radius: 5px; }
@@ -95,112 +116,23 @@ label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 5px; }
    ESTILOS ESPECÍFICOS PARA MÓVILES
    ========================================= */
 @media (max-width: 768px) {
-    /* Layout más fluido y vertical */
-    .app-container {
-        padding: 10px;
-        padding-bottom: 50px;
-        width: 100%;
-    }
-
-    /* Header apilado verticalmente */
-    header {
-        flex-direction: column;
-        gap: 13px; /* Reducido un 10-15% */
-        text-align: center;
-        padding: 12px 9px; /* Reducido */
-    }
-
-    .user-info {
-        width: 100%;
-        justify-content: center;
-        flex-wrap: wrap;
-        gap: 9px;
-    }
-
-    /* Botones más grandes para el dedo, pero reducidos un 10% respecto a la versión anterior */
-    button, .btn-primary, .btn-sec, .btn-del, .btn-refresh, .btn-hist {
-        min-height: 43px; /* Antes 48px */
-        font-size: 14.5px; /* Antes 16px */
-        padding: 9px 13px; /* Antes 10px 15px */
-    }
-
-    /* Inputs más amigables al tacto */
-    input, select, textarea {
-        font-size: 14.5px; /* Antes 16px */
-        min-height: 40px; /* Antes 45px */
-        padding: 10px;
-    }
-
-    /* Convertir grids de 2 columnas en 1 sola columna vertical */
-    .grid-2 {
-        grid-template-columns: 1fr;
-        gap: 13px; /* Antes 15px */
-    }
-
-    /* Tarjetas ocupan todo el ancho */
-    .cards-grid {
-        grid-template-columns: 1fr;
-    }
-
-    /* Cabeceras de sección apiladas */
-    .header-row {
-        flex-direction: column;
-        align-items: stretch !important; /* Botones ocupan todo el ancho */
-        gap: 13px; /* Antes 15px */
-        text-align: center;
-    }
-
-    .header-row button {
-        width: 100% !important;
-        margin: 0;
-    }
-
-    /* Modales full width en móvil */
-    .modal-box {
-        width: 95%;
-        padding: 13px; /* Antes 15px */
-        max-height: 95vh;
-        margin: 9px; /* Antes 10px */
-    }
-    
-    .modal-footer {
-        flex-direction: column-reverse; /* Botón principal arriba en móviles */
-        gap: 9px;
-    }
-
-    .modal-footer button {
-        width: 100%;
-    }
-
-    /* Ajuste para el modal de Armar Ruta (columnas se vuelven filas) */
-    #modalCrearRuta .modal-box > div[style*="display:flex"] {
-        flex-direction: column;
-    }
-    
-    #poolPedidosAdmin {
-        max-height: 220px; /* Reducido de 250px */
-    }
-
-    /* Resumen de historial apilado */
-    .hist-summary {
-        flex-direction: column;
-        gap: 9px;
-        text-align: center;
-    }
-
-    /* Ajuste de filas de productos en formularios */
-    .prod-row {
-        flex-wrap: wrap;
-    }
-    .prod-row input.pr-name {
-        width: 100%;
-        flex: 100% !important; /* Nombre producto ocupa toda la fila */
-        margin-bottom: 5px;
-    }
-    .prod-row input.pr-kg {
-        flex: 1 !important;
-    }
-    .prod-row button {
-        flex: 0 0 36px; /* Reducido de 40px */
-    }
+    .app-container { padding: 10px; padding-bottom: 50px; width: 100%; }
+    header { flex-direction: column; gap: 13px; text-align: center; padding: 12px 9px; }
+    .user-info { width: 100%; justify-content: center; flex-wrap: wrap; gap: 9px; }
+    button, .btn-primary, .btn-sec, .btn-del, .btn-refresh, .btn-hist { min-height: 43px; font-size: 14.5px; padding: 9px 13px; }
+    input, select, textarea { font-size: 14.5px; min-height: 40px; padding: 10px; }
+    .grid-2 { grid-template-columns: 1fr; gap: 13px; }
+    .cards-grid { grid-template-columns: 1fr; }
+    .header-row { flex-direction: column; align-items: stretch !important; gap: 13px; text-align: center; }
+    .header-row button { width: 100% !important; margin: 0; }
+    .modal-box { width: 95%; padding: 13px; max-height: 95vh; margin: 9px; }
+    .modal-footer { flex-direction: column-reverse; gap: 9px; }
+    .modal-footer button { width: 100%; }
+    #modalCrearRuta .modal-box > div[style*="display:flex"] { flex-direction: column; }
+    #poolPedidosAdmin { max-height: 220px; }
+    .hist-summary { flex-direction: column; gap: 9px; text-align: center; }
+    .prod-row { flex-wrap: wrap; }
+    .prod-row input.pr-name { width: 100%; flex: 100% !important; margin-bottom: 5px; }
+    .prod-row input.pr-kg { flex: 1 !important; }
+    .prod-row button { flex: 0 0 36px; }
 }

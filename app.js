@@ -309,6 +309,19 @@ window.borrarPedido = async (e, id) => {
 
 // --- ADMIN ---
 function renderAdmin() {
+    // === NUEVO: Lógica del Contador de Pedidos Pendientes (ALERTA ROJA) ===
+    const msgBox = document.getElementById('msgPedidosPendientes');
+    const lblCount = document.getElementById('lblCountPedidos');
+    if(msgBox && lblCount) {
+        if(rawPedidos.length > 0) {
+            msgBox.style.display = 'block';
+            lblCount.textContent = rawPedidos.length;
+        } else {
+            msgBox.style.display = 'none';
+        }
+    }
+    // ======================================================================
+
     const actives = document.getElementById('listRutasActivas'); actives.innerHTML = '';
     rawDespachos.filter(x => x.estado === 'Asignada').forEach(r => {
         actives.innerHTML += `<div class="card item-card status-asignada">
@@ -744,13 +757,13 @@ window.generateTicketHTML = (r) => {
         `;
     }
 
-    return `<div class="t-header"><h2 style="margin:0; font-size:16px">AGROLLANOS</h2><p style="font-weight:bold; font-size:14px; margin-top:5px">Orden de Carga #${r.id.toString().slice(-4)}</p></div>
+    return `<div class="t-header"><h2 style="margin:0; font-size:16px">AGROLLANOS</h2><p style="font-weight:bold; font-size:14px; margin-top:5px">Carga Id#${r.id.toString().slice(-4)}</p></div>
     <div style="font-size:12px;">
         <div class="t-row"><span>Ruta:</span><strong>${r.nombre_ruta}</strong></div>
         <div class="t-row"><span>Fecha:</span><span>${fRuta}</span></div>
         <div class="t-row"><span>Hora:</span><span>${hCargue}</span></div>
         <div class="t-row"><span>Conductor:</span><span>${r.conductor_asignado}</span></div>
-        <div class="t-row"><span>Placa:</span><span>${r.placa_vehiculo}</span></div>
+        <div class="t-row"><span>Vehiculo:</span><span>${r.placa_vehiculo}</span></div>
     </div>
     <div class="t-divider"></div>
     ${listHTML}
@@ -769,7 +782,7 @@ window.sendWhatsAppTicket = () => {
     // Cálculos básicos de carga
     const kgReal = parseFloat(r.total_kg_entregados_real) || r.total_kg_ruta || 0;
 
-    let msg = `*AGROLLANOS - Orden de Carga Id#${r.id.toString().slice(-4)}*\n📅 *Fecha:* ${fRuta}\n⏰ *Hora:* ${hCargue}\n🛞 *Conductor:* ${r.conductor_asignado}\n🚛 *Placa:* ${r.placa_vehiculo}\n📍 *Ruta:* ${r.nombre_ruta}\n\n*DETALLE DE CARGA:*\n`;
+    let msg = `*SidmaLog - Orden Id#${r.id.toString().slice(-4)}*\n📅 *Fecha:* ${fRuta}\n⏰ *Hora:* ${hCargue}\n🛞 *Conductor:* ${r.conductor_asignado}\n🚛 *Vehiculo:* ${r.placa_vehiculo}\n📍 *Ruta:* ${r.nombre_ruta}\n\n*DETALLE DE CARGA:*\n`;
     
     r.detalles.forEach(c => { 
         // No incluimos la información de fecha_original ni hora_original para el mensaje de WhatsApp por solicitud
