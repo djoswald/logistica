@@ -152,7 +152,7 @@ border-radius: 8px;
     </div>
 </div>
 
-<!-- MODAL VISTA TICKET -->
+<!-- MODAL VISTA TIQUETE -->
 <div id="modalTicket" class="modal-overlay" style="display:none;">
     <div class="modal-box" style="max-width: 400px;">
         <h3 style="text-align:center; margin-top:0;">Detalle de Manifiesto</h3>
@@ -283,42 +283,76 @@ border-radius: 8px;
     function verTicket(id) {
         const r = historyData.find(x => String(x.id) === String(id));
         if(!r) return;
+        
         const detalles = JSON.parse(r.detalles_clientes_json || '[]');
+        const gastos = JSON.parse(r.gastos_adicionales || '[]');
+        
         let list = '';
         detalles.forEach(c => {
-            list += `<div style="border-bottom:1px solid #000; padding:4px 0; margin-top:5px;">
-                        <strong>${c.cliente.toUpperCase()}</strong> ${c.orden ? `<small>(Ord: ${c.orden})</small>` : ''}
+            list += `<div style="border-bottom:1px solid #000; padding:5px 0; margin-top:5px;">
+                        <strong>${c.cliente.toUpperCase()}</strong>
+                        ${c.orden ? ` <span style="font-size:10px;">(Ord: ${c.orden})</span>` : ''}
                      </div>`;
             c.productos.forEach(p => {
                 const ent = parseFloat(p.kg_ent) || 0;
-                list += `<div style="display:flex; justify-content:space-between; font-size:11px;">
-                            <span>- ${p.producto}</span><span>${fmtNum.format(ent)} Kg</span>
+                const plan = parseFloat(p.kg_plan) || 0;
+                const esParcial = ent < plan;
+                
+                list += `<div style="display:flex; justify-content:space-between; font-size:11px; padding: 2px 0;">
+                            <span>- ${p.producto}</span>
+                            <span style="${esParcial ? 'color: red; font-weight: bold;' : ''}">
+                                ${fmtNum.format(ent)} ${esParcial ? `/ ${fmtNum.format(plan)}` : ''} Kg
+                            </span>
                          </div>`;
             });
         });
 
+        let gastosDetalle = '';
+        let totalGasto = 0;
+        if (gastos.length > 0) {
+            gastosDetalle = `<div style="margin-top:10px; border-top: 1px dashed #666; padding-top:5px;">`;
+            gastos.forEach(g => {
+                const val = parseFloat(g.val) || 0;
+                totalGasto += val;
+                gastosDetalle += `<div style="display:flex; justify-content:space-between; font-size:10px; color: #555;">
+                                    <span>   • ${g.desc}:</span><span>${fmtMoney.format(val)}</span>
+                                  </div>`;
+            });
+            gastosDetalle += `</div>`;
+        }
+
         const totalPagado = parseFloat(r.total_pagar_conductor) || 0;
+        const comisionRuta = totalPagado - totalGasto;
 
         document.getElementById('ticketPreviewContent').innerHTML = `
             <div style="text-align:center;">
                 <h2 style="margin:0;">AGROLLANOS</h2>
                 <p style="margin:0; font-size:10px;">MANIFIESTO FINALIZADO #${r.id.toString().slice(-4)}</p>
             </div>
-            <div style="font-size:11px; margin-top:8px;">
-                <div style="display:flex; justify-content:space-between;"><span>Fecha:</span><span>${fmtDate(r.fecha_entrega || r.fecha)}</span></div>
+            <div style="font-size:11px; margin-top:10px;">
+                <div style="display:flex; justify-content:space-between;"><span>Fecha Ent:</span><span>${fmtDate(r.fecha_entrega || r.fecha)}</span></div>
                 <div style="display:flex; justify-content:space-between;"><span>Conductor:</span><strong>${r.conductor_asignado}</strong></div>
                 <div style="display:flex; justify-content:space-between;"><span>Placa:</span><span>${r.placa_vehiculo}</span></div>
+                <div style="display:flex; justify-content:space-between;"><span>Ruta:</span><span>${r.nombre_ruta}</span></div>
             </div>
             <hr style="border-top:1px dashed #000; margin:8px 0;">
             ${list}
             <hr style="border-top:1px solid #000; margin:8px 0;">
             <div style="display:flex; justify-content:space-between; font-weight:bold; font-size:13px;">
-                <span>TOTAL CARGA:</span><span>${fmtNum.format(r.total_kg_entregados_real)} Kg</span>
+                <span>TOTAL CARGA REAL:</span><span>${fmtNum.format(r.total_kg_entregados_real)} Kg</span>
             </div>
-            <div style="display:flex; justify-content:space-between; color:#10b981; font-weight:bold; font-size:14px; margin-top:5px; border-top:1px double #000; padding-top:3px;">
-                <span>PAGO TOTAL:</span><span>${fmtMoney.format(totalPagado)}</span>
+            
+            ${r.observaciones ? `<div style="font-size:10px; margin-top:8px; background:#f8fafc; padding:8px; border-left: 3px solid var(--orange); color: #334155;"><strong>Observaciones:</strong> ${r.observaciones}</div>` : ''}
+
+            <div style="margin-top:10px; padding-top:5px; border-top:1px solid #eee;">
+                <div style="display:flex; justify-content:space-between; font-size:11px;">
+                    <span>Comisión Ruta:</span><span>${fmtMoney.format(comisionRuta)}</span>
+                </div>
+                ${gastosDetalle}
+                <div style="display:flex; justify-content:space-between; color:green; font-weight:bold; font-size:14px; margin-top:5px; border-top:1px double #000; padding-top:3px;">
+                    <span>PAGO TOTAL:</span><span>${fmtMoney.format(totalPagado)}</span>
+                </div>
             </div>
-            ${r.observaciones ? `<div style="font-size:10px; margin-top:8px; border:1px solid #ddd; padding:4px;"><strong>Obs:</strong> ${r.observaciones}</div>` : ''}
         `;
         document.getElementById('modalTicket').style.display = 'flex';
     }
@@ -326,7 +360,7 @@ border-radius: 8px;
     function printTicket() {
         const content = document.getElementById('ticketPreviewContent').innerHTML;
         const printWindow = window.open('', '_blank');
-        printWindow.document.write(`<html><head><style>body{font-family:'Courier New',monospace;width:76mm;padding:2mm;font-size:12px;}hr{border:none;border-top:1px dashed black;margin:8px 0;}</style></head><body onload="window.print();window.close();">${content}</body></html>`);
+        printWindow.document.write(`<html><head><style>body{font-family:'Courier New',monospace;width:76mm;padding:2mm;font-size:12px;}hr{border:none;border-top:1px dashed black;margin:8px 0;}</style></head><body onload=\"window.print();window.close();\">${content}</body></html>`);
         printWindow.document.close();
     }
 
