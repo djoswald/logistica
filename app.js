@@ -744,7 +744,7 @@ window.generateTicketHTML = (r) => {
         `;
     }
 
-    return `<div class="t-header"><h2 style="margin:0; font-size:16px">AGROLLANOS</h2><p style="font-weight:bold; font-size:14px; margin-top:5px">MANIFIESTO #${r.id.toString().slice(-4)}</p></div>
+    return `<div class="t-header"><h2 style="margin:0; font-size:16px">AGROLLANOS</h2><p style="font-weight:bold; font-size:14px; margin-top:5px">Orden de Carga #${r.id.toString().slice(-4)}</p></div>
     <div style="font-size:12px;">
         <div class="t-row"><span>Ruta:</span><strong>${r.nombre_ruta}</strong></div>
         <div class="t-row"><span>Fecha:</span><span>${fRuta}</span></div>
@@ -769,7 +769,7 @@ window.sendWhatsAppTicket = () => {
     // Cálculos básicos de carga
     const kgReal = parseFloat(r.total_kg_entregados_real) || r.total_kg_ruta || 0;
 
-    let msg = `*AGROLLANOS - MANIFIESTO #${r.id.toString().slice(-4)}*\n📅 *Fecha:* ${fRuta}\n⏰ *Hora:* ${hCargue}\n🛞 *Conductor:* ${r.conductor_asignado}\n🚛 *Placa:* ${r.placa_vehiculo}\n📍 *Ruta:* ${r.nombre_ruta}\n\n*DETALLE DE CARGA:*\n`;
+    let msg = `*AGROLLANOS - Orden de Carga Id#${r.id.toString().slice(-4)}*\n📅 *Fecha:* ${fRuta}\n⏰ *Hora:* ${hCargue}\n🛞 *Conductor:* ${r.conductor_asignado}\n🚛 *Placa:* ${r.placa_vehiculo}\n📍 *Ruta:* ${r.nombre_ruta}\n\n*DETALLE DE CARGA:*\n`;
     
     r.detalles.forEach(c => { 
         // No incluimos la información de fecha_original ni hora_original para el mensaje de WhatsApp por solicitud
