@@ -760,27 +760,21 @@ window.openTicket = (id) => {
 
 window.sendWhatsAppTicket = () => {
     if (!currentTicketRoute) return;
-
     const r = currentTicketRoute;
     const esFinalizada = (r.estado === 'Finalizada' || r.fecha_entrega);
 
-    let msg = '';
-    msg += `*AGROLLANOS - MANIFIESTO #${r.id.toString().slice(-4)}*\n\n`;
+    let msg = `*AGROLLANOS - MANIFIESTO #${r.id.toString().slice(-4)}*\n`;
+    msg += `📅 *Fecha Salida:* ${fmtDate(r.fecha || r.fecha_entrega)}\n`;
+    msg += `⏰ *Hora Cargue:* ${fmtTime(r.hora || r.hora_entrega)}\n`;
+    msg += `🛞 *Conductor:* ${r.conductor_asignado}\n`;
+    msg += `🚛 *Placa:* ${r.placa_vehiculo}\n`;
+    msg += `📍 *Ruta:* ${r.nombre_ruta}\n`;
 
-    msg += `${EMOJI.CALENDAR} *Fecha Salida:* ${fmtDate(r.fecha || r.fecha_entrega)}\n`;
-    msg += `${EMOJI.CLOCK} *Hora Cargue:* ${fmtTime(r.hora || r.hora_entrega)}\n`;
-    msg += `${EMOJI.DRIVER} *Conductor:* ${r.conductor_asignado}\n`;
-    msg += `${EMOJI.TRUCK} *Placa:* ${r.placa_vehiculo}\n`;
-    msg += `${EMOJI.ROUTE} *Ruta:* ${r.nombre_ruta}\n\n`;
-
-    msg += `*DETALLE DE CARGA:*\n`;
+    msg += `\n*DETALLE DE CARGA:*\n`;
 
     r.detalles.forEach(c => {
-        msg += `• *${c.cliente.toUpperCase()}* (Ord: ${c.orden || 'S/N'})\n`;
-
-        if (c.observaciones) {
-            msg += `   _(Obs: ${c.observaciones})_\n`;
-        }
+        msg += `• *${c.cliente.toUpperCase()}* - Ord: ${c.orden || 'S/N'}\n`;
+        if (c.observaciones) msg += `   _(Obs: ${c.observaciones})_\n`;
 
         c.productos.forEach(p => {
             const kgEnt = p.kg_ent ?? p.kg_plan;
@@ -794,7 +788,11 @@ window.sendWhatsAppTicket = () => {
         });
     });
 
-    msg += `\n${EMOJI.BOX} *Total:* ${fmtNum.format(r.total_kg_entregados_real || r.total_kg_ruta)} Kg\n`;
+    msg += `\n📦 *Total:* ${fmtNum.format(r.total_kg_entregados_real || r.total_kg_ruta)} Kg\n`;
+
+    if (r.observaciones) {
+        msg += `📝 *Observaciones:* ${r.observaciones}\n`;
+    }
 
     if (esFinalizada) {
         const kgReal = parseFloat(r.total_kg_entregados_real) || 0;
@@ -807,18 +805,15 @@ window.sendWhatsAppTicket = () => {
         }
 
         msg += `\n*RESUMEN PAGO CONDUCTOR:*\n`;
-        msg += `${EMOJI.MONEY} Comisión: ${fmtMoney.format(comision)}\n`;
-
-        if (totalGastos > 0) {
-            msg += `${EMOJI.GAS} Gastos: ${fmtMoney.format(totalGastos)}\n`;
-        }
-
-        msg += `${EMOJI.CHECK} *TOTAL:* ${fmtMoney.format(comision + totalGastos)}\n`;
+        msg += `💰 Comisión: ${fmtMoney.format(comision)}\n`;
+        if (totalGastos > 0) msg += `⛽ Gastos: ${fmtMoney.format(totalGastos)}\n`;
+        msg += `✅ *TOTAL:* ${fmtMoney.format(comision + totalGastos)}\n`;
     }
 
     const url = `https://wa.me/?text=${encodeURIComponent(msg)}`;
     window.open(url, '_blank');
 };
+
 // --- UTILIDADES ---
 window.closeModal = (id) => document.getElementById(id).style.display='none';
 window.logout = () => { localStorage.removeItem('sidma_user'); location.reload(); };
@@ -929,4 +924,3 @@ window.submitEditRuta = async () => {
     }
 
 };
-
