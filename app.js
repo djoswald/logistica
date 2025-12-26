@@ -714,7 +714,7 @@ window.openTicket = (id) => {
                 const v = parseFloat(g.val) || 0;
                 totalGastos += v;
                 gastosDetalle += `<div style="display:flex; justify-content:space-between; font-size:10px; color:#666;">
-                    <span>   > ${g.desc}:</span><span>${fmtMoney.format(v)}</span>
+                    <span>    > ${g.desc}:</span><span>${fmtMoney.format(v)}</span>
                 </div>`;
             });
         }
@@ -766,7 +766,7 @@ window.sendWhatsAppTicket = () => {
     let msg = `*AGROLLANOS - MANIFIESTO #${r.id.toString().slice(-4)}*\n`;
     msg += `📅 *Fecha Salida:* ${fmtDate(r.fecha || r.fecha_entrega)}\n`;
     msg += `⏰ *Hora Cargue:* ${fmtTime(r.hora || r.hora_entrega)}\n`;
-    msg += `🛞 *Conductor:* ${r.conductor_asignado}\n`;
+    msg += `👤 *Conductor:* ${r.conductor_asignado}\n`;
     msg += `🚛 *Placa:* ${r.placa_vehiculo}\n`;
     msg += `📍 *Ruta:* ${r.nombre_ruta}\n`;
     
@@ -788,7 +788,7 @@ window.sendWhatsAppTicket = () => {
         }); 
     });
     
-    msg += `\n📦 *Total:* ${fmtNum.format(r.total_kg_entregados_real || r.total_kg_ruta)} Kg\n`;
+    msg += `\n⚖️ *Total:* ${fmtNum.format(r.total_kg_entregados_real || r.total_kg_ruta)} Kg\n`;
 
     if (r.observaciones) msg += `📝 *Observaciones:* ${r.observaciones}\n`;
     
@@ -800,14 +800,14 @@ window.sendWhatsAppTicket = () => {
         if (r.gastos) r.gastos.forEach(g => tGastos += parseFloat(g.val)||0);
         
         msg += `\n\n*RESUMEN PAGO CONDUCTOR:*`;
-        msg += `\n💰 Comisión: ${fmtMoney.format(comision)}`;
+        msg += `\n💵 Comisión: ${fmtMoney.format(comision)}`;
         if (r.gastos && r.gastos.length > 0) {
             msg += `\n⛽ Gastos: ${fmtMoney.format(tGastos)}`;
         }
         msg += `\n✅ *TOTAL:* ${fmtMoney.format(comision + tGastos)}`;
     }
     
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
 };
 
 // --- UTILIDADES ---
