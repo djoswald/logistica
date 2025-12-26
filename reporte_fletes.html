@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reporte de Fletes - AGROLLANOS</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<style>
+.hist-container { max-width: 1200px; margin: 0 auto; padding: 15px; }
+
+    .filter-bar {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 10px; background: var(--card); padding: 15px;
+        border-radius: 10px; border: 1px solid var(--border); margin-bottom: 20px;
+    }
+
+    .table-wrapper { background: var(--card); border-radius: 10px; overflow-x: auto; border: 1px solid var(--border); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 900px; }
+    th { background: rgba(59, 130, 246, 0.1); color: var(--primary); text-align: left; padding: 12px; border-bottom: 2px solid var(--border); }
+    td { padding: 12px; border-bottom: 1px solid var(--border); color: #cbd5e1; }
+    
+    .total-row { background: rgba(16, 185, 129, 0.1); font-weight: bold; color: var(--green); }
+    tr:hover { background: rgba(255, 255, 255, 0.02); }
+
+    /* Paginación */
+    .pagination-bar {
+        display: flex; justify-content: space-between; align-items: center;
+        margin-top: 15px; background: var(--card); padding: 10px 15px;
+        border-radius: 8px; border: 1px solid var(--border);
+    }
+    .page-btns { display: flex; gap: 5px; }
+    .btn-page {
+        background: rgba(255,255,255,0.05); color: white; border: 1px solid var(--border);
+        padding: 5px 12px; border-radius: 4px; cursor: pointer; transition: 0.2s;
+    }
+    .btn-page:hover:not(:disabled) { background: var(--primary); }
+    .btn-page:disabled { opacity: 0.3; cursor: not-allowed; }
+    .btn-page.active { background: var(--primary); border-color: var(--primary); }
+
+    @media (max-width: 768px) {
+        .hist-container { padding: 10px; }
+        .filter-bar { grid-template-columns: 1fr; }
+        .pagination-bar { flex-direction: column; gap: 10px; text-align: center; }
+        
+        table, thead, tbody, th, td, tr { display: block; }
+        thead tr { position: absolute; top: -9999px; left: -9999px; }
+        tr { margin-bottom: 15px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); padding: 10px; }
+        td { border: none; position: relative; padding-left: 50% !important; text-align: right; min-height: 35px; }
+        td:before { 
+            position: absolute; left: 12px; width: 45%; padding-right: 10px; 
+            text-align: left; font-weight: bold; color: var(--primary); content: attr(data-label); 
+        }
+        .total-row { display: none; }
+    }
+</style>
+
+
+</head>
+<body>
+
+<header>
+    <div class="brand" style="display: flex; align-items: center; gap: 15px;">
+        <button onclick="window.location.href='index.html'" class="btn-sec small" style="color: white; border-color: #444;">
+            <i class="fa-solid fa-arrow-left"></i> ATRÁS
+        </button>
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <i class="fa-solid fa-file-invoice-dollar"></i> REPORTE FLETES
+        </div>
+    </div>
+    <div id="userBadge" style="font-size: 0.8rem; background: var(--primary); padding: 4px 10px; border-radius: 20px;">Cargando...</div>
+</header>
+
+<div class="hist-container">
+    <!-- FILTROS -->
+    <div class="filter-bar">
+        <div>
+            <label style="font-size: 0.7rem; color: #94a3b8; display: block; margin-bottom: 4px;">Desde</label>
+            <input type="date" id="repIni" onchange="resetAndApply()" style="width: 100%;">
+        </div>
+        <div>
+            <label style="font-size: 0.7rem; color: #94a3b8; display: block; margin-bottom: 4px;">Hasta</label>
+            <input type="date" id="repFin" onchange="resetAndApply()" style="width: 100%;">
+        </div>
+        <div>
+            <label style="font-size: 0.7rem; color: #94a3b8; display: block; margin-bottom: 4px;">Buscar Cliente/Orden/Ruta</label>
+            <input type="text" id="repSearch" placeholder="Escriba aquí..." oninput="resetAndApply()" style="width: 100%;">
+        </div>
+        <div style="display: flex; align-items: flex-end;">
+            <button onclick="exportCSV()" class="btn-sec" style="width: 100%; height: 40px;">
+                <i class="fa-solid fa-file-csv"></i> EXPORTAR CSV
+            </button>
+        </div>
+    </div>
+
+    <!-- TABLA DE RESULTADOS -->
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>ID Ruta</th>
+                    <th>Cliente</th>
+                    <th>Orden</th>
+                    <th>Peso (Kg)</th>
+                    <th>Costo Flete</th>
+                    <th>Pago Cond.</th>
+                    <th>Utilidad Est.</th>
+                </tr>
+            </thead>
+            <tbody id="tbodyReporte"></tbody>
+            <tfoot id="tfootReporte"></tfoot>
+        </table>
+    </div>
+
+    <!-- BARRA DE PAGINACIÓN -->
+    <div id="paginationBar" class="pagination-bar" style="display: none;">
+        <div id="paginationInfo" style="font-size: 0.85rem; color: #94a3b8;">Mostrando 0 de 0 registros</div>
+        <div class="page-btns">
+            <button id="btnPrev" onclick="changePage(-1)" class="btn-page"><i class="fa-solid fa-chevron-left"></i></button>
+            <div id="pageNumbers" style="display: flex; gap: 5px;"></div>
+            <button id="btnNext" onclick="changePage(1)" class="btn-page"><i class="fa-solid fa-chevron-right"></i></button>
+        </div>
+    </div>
+
+    <div id="noRecords" style="display:none; text-align:center; padding:50px; color:#64748b;">
+        <i class="fa-solid fa-magnifying-glass" style="font-size: 2rem; display: block; margin-bottom: 10px;"></i>
+        No se encontraron registros de fletes.
+    </div>
+</div>
+
+<script>
+    const user = JSON.parse(localStorage.getItem('sidma_user'));
+    let reportData = [];
+    let filteredData = [];
+    let currentPage = 1;
+    const rowsPerPage = 10;
+
+    const LOCALE = 'es-CO';
+    const fmtMoney = new Intl.NumberFormat(LOCALE, { style: 'currency', currency: 'COP', minimumFractionDigits: 0 });
+    const fmtNum = new Intl.NumberFormat(LOCALE, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+
+    async function loadReport() {
+        if(!user || (user.rol !== 'admin' && user.rol !== 'operador')) { 
+            window.location.href = 'index.html'; 
+            return; 
+        }
+        document.getElementById('userBadge').textContent = `${user.nombre} (${user.rol.toUpperCase()})`;
+
+        try {
+            const res = await fetch('/api/reporte_fletes'); 
+            if(!res.ok) throw new Error("No se pudo conectar con la base de datos");
+            
+            const raw = await res.json();
+            
+            reportData = raw.map(r => {
+                let item = {};
+                for(let k in r) {
+                    item[k.toLowerCase().trim().replace(/ /g, '_')] = r[k];
+                }
+                return item;
+            }).sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+
+            applyFilters();
+        } catch (e) { 
+            console.error("Error cargando reporte:", e);
+            const noRec = document.getElementById('noRecords');
+            noRec.style.display = 'block';
+            noRec.innerHTML = `<i class="fa-solid fa-circle-exclamation" style="color:var(--danger)"></i><br>Error de conexión: ${e.message}`;
+        }
+    }
+
+    function resetAndApply() {
+        currentPage = 1;
+        applyFilters();
+    }
+
+    function applyFilters() {
+        const ini = document.getElementById('repIni').value;
+        const fin = document.getElementById('repFin').value;
+        const search = document.getElementById('repSearch').value.toLowerCase().trim();
+
+        filteredData = reportData.filter(r => {
+            const dateStr = (r.fecha || '').split('T')[0];
+            const matchDate = (!ini || dateStr >= ini) && (!fin || dateStr <= fin);
+            
+            // Aseguramos que los valores sean strings antes de comparar
+            const valCliente = String(r.cliente || '').toLowerCase();
+            const valOrden = String(r.orden || '').toLowerCase();
+            const valRuta = String(r.id_ruta || '').toLowerCase();
+
+            const matchSearch = !search || 
+                valCliente.includes(search) || 
+                valOrden.includes(search) ||
+                valRuta.includes(search);
+
+            return matchDate && matchSearch;
+        });
+
+        renderTable();
+    }
+
+    function renderTable() {
+        const tbody = document.getElementById('tbodyReporte');
+        const tfoot = document.getElementById('tfootReporte');
+        const noRec = document.getElementById('noRecords');
+        const pagBar = document.getElementById('paginationBar');
+        
+        tbody.innerHTML = '';
+        tfoot.innerHTML = '';
+        
+        if(filteredData.length === 0) {
+            noRec.style.display = 'block';
+            pagBar.style.display = 'none';
+            return;
+        }
+        
+        noRec.style.display = 'none';
+        pagBar.style.display = 'flex';
+
+        let tKg = 0, tFlete = 0, tCond = 0;
+        filteredData.forEach(r => {
+            tKg += parseFloat(r.peso_kg) || 0;
+            tFlete += parseFloat(r.costo_flete_total) || 0;
+            tCond += parseFloat(r.pago_conductor_estimado) || 0;
+        });
+
+        const start = (currentPage - 1) * rowsPerPage;
+        const end = start + rowsPerPage;
+        const pageData = filteredData.slice(start, end);
+
+        pageData.forEach(r => {
+            const flete = parseFloat(r.costo_flete_total) || 0;
+            const cond = parseFloat(r.pago_conductor_estimado) || 0;
+            const peso = parseFloat(r.peso_kg) || 0;
+            const utilidad = flete - cond;
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td data-label="Fecha">${r.fecha ? new Date(r.fecha).toLocaleDateString() : '--'}</td>
+                <td data-label="ID Ruta">#${String(r.id_ruta || '').slice(-6)}</td>
+                <td data-label="Cliente">${r.cliente || '--'}</td>
+                <td data-label="Orden">${r.orden || '--'}</td>
+                <td data-label="Peso (Kg)">${fmtNum.format(peso)}</td>
+                <td data-label="Costo Flete">${fmtMoney.format(flete)}</td>
+                <td data-label="Pago Cond.">${fmtMoney.format(cond)}</td>
+                <td data-label="Utilidad Est." style="color: ${utilidad >= 0 ? '#10b981' : '#ef4444'}; font-weight:bold;">
+                    ${fmtMoney.format(utilidad)}
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        const footRow = document.createElement('tr');
+        footRow.className = 'total-row';
+        footRow.innerHTML = `
+            <td colspan="4" style="text-align:right">TOTALES FILTRADOS</td>
+            <td>${fmtNum.format(tKg)} Kg</td>
+            <td>${fmtMoney.format(tFlete)}</td>
+            <td>${fmtMoney.format(tCond)}</td>
+            <td>${fmtMoney.format(tFlete - tCond)}</td>
+        `;
+        tfoot.appendChild(footRow);
+
+        updatePaginationUI();
+    }
+
+    function updatePaginationUI() {
+        const totalPages = Math.ceil(filteredData.length / rowsPerPage);
+        const info = document.getElementById('paginationInfo');
+        const start = (currentPage - 1) * rowsPerPage + 1;
+        const end = Math.min(currentPage * rowsPerPage, filteredData.length);
+        
+        info.textContent = `Mostrando ${start}-${end} de ${filteredData.length} registros`;
+
+        document.getElementById('btnPrev').disabled = currentPage === 1;
+        document.getElementById('btnNext').disabled = currentPage === totalPages;
+
+        const pageNumbers = document.getElementById('pageNumbers');
+        pageNumbers.innerHTML = '';
+        
+        for (let i = 1; i <= totalPages; i++) {
+            if (i === 1 || i === totalPages || (i >= currentPage - 1 && i <= currentPage + 1)) {
+                const btn = document.createElement('button');
+                btn.className = `btn-page ${i === currentPage ? 'active' : ''}`;
+                btn.textContent = i;
+                btn.onclick = () => { currentPage = i; renderTable(); };
+                pageNumbers.appendChild(btn);
+            } else if (i === currentPage - 2 || i === currentPage + 2) {
+                const span = document.createElement('span');
+                span.textContent = '...';
+                span.style.color = '#64748b';
+                pageNumbers.appendChild(span);
+            }
+        }
+    }
+
+    function changePage(dir) {
+        currentPage += dir;
+        renderTable();
+    }
+
+    function exportCSV() {
+        if(filteredData.length === 0) return;
+        
+        let csv = "\ufeffID;ID_Ruta;Fecha;Cliente;Orden;Peso_Kg;Costo_Flete;Pago_Conductor;Utilidad\n";
+        
+        filteredData.forEach(r => {
+            const f = parseFloat(r.costo_flete_total) || 0;
+            const c = parseFloat(r.pago_conductor_estimado) || 0;
+            const row = [
+                r.id,
+                r.id_ruta,
+                r.fecha ? new Date(r.fecha).toLocaleDateString() : '',
+                r.cliente,
+                r.orden,
+                r.peso_kg,
+                f,
+                c,
+                (f - c)
+            ];
+            csv += row.join(";") + "\n";
+        });
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `Reporte_Fletes_${new Date().toISOString().split('T')[0]}.csv`;
+        link.click();
+    }
+
+    window.onload = loadReport;
+</script>
+
+
+</body>
+</html>

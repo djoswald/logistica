@@ -39,11 +39,19 @@
         <main class="mt">
             <!-- VISTA OPERADOR -->
             <div id="view-operador" class="role-section" style="display:none;">
+                
+                <!-- Acciones Rápidas Operador -->
                 <div class="card">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-                        <h3 style="margin:0">Pedidos Creados</h3>
-                        <button onclick="openPedidoModal()" class="btn-primary">+ NUEVO PEDIDO</button>
+                    <h3 style="margin-bottom:10px;">Acciones y Consultas</h3>
+                    <button onclick="openPedidoModal()" class="btn-primary" style="width:100%; margin-bottom:10px;">+ NUEVO PEDIDO</button>
+                    <div style="display:flex; gap:10px;">
+                        <button onclick="window.location.href='historial.html'" class="btn-sec" style="flex:1">📊 HISTORIAL</button>
+                        <button onclick="window.location.href='reporte_fletes.html'" class="btn-sec" style="flex:1">💵 FLETES</button>
                     </div>
+                </div>
+
+                <div class="card">
+                    <h3 style="margin:0 0 15px 0;">Pedidos Creados</h3>
                     <div id="listPedidosOperador" class="grid-list"></div>
                 </div>
                 <div class="card">
@@ -54,18 +62,31 @@
 
             <!-- VISTA ADMIN -->
             <div id="view-admin" class="role-section" style="display:none;">
+                
+                <!-- SECCIÓN DE ACCIONES RÁPIDAS -->
                 <div class="card">
                     <h3 style="text-align: center; margin-bottom: 10px;">Panel de Control</h3>
-                    <div id="pendingNotice" style="display:none; padding: 10px; background: rgba(245, 158, 11, 0.1); border: 1px dashed var(--orange); border-radius: 8px; margin-bottom: 15px; text-align: center; color: var(--orange); font-weight: bold; font-size: 0.9rem;"></div>
                     <button onclick="openCrearRutaModal()" class="btn-primary" style="width:100%; margin-bottom: 15px;">ARMAR NUEVA RUTA</button>
-                    <div style="display:flex; gap:10px;">
-                        <!-- BOTÓN ACTUALIZADO PARA ABRIR PÁGINA APARTE -->
-                        <button onclick="window.open('historial.html', '_blank')" class="btn-sec" style="flex:1">📊 HISTORIAL / PAGOS</button>
-                        <button onclick="window.location.reload()" class="btn-sec" style="flex:1">🔄 REFRESCAR</button>
+                    <div style="display:flex; gap:10px; flex-wrap: wrap;">
+                        <button onclick="window.location.href='historial.html'" class="btn-sec" style="flex:1; min-width:140px;">📊 HISTORIAL / PAGOS</button>
+                        <button onclick="window.location.href='reporte_fletes.html'" class="btn-sec" style="flex:1; min-width:140px;">💵 REPORTE FLETES</button>
+                        <button onclick="window.location.reload()" class="btn-sec" style="flex:1; min-width:140px;">🔄 REFRESCAR</button>
                     </div>
                 </div>
+
+                <!-- SECCIÓN PEDIDOS PENDIENTES -->
                 <div class="card">
-                    <h3>Rutas Activas (En Tránsito)</h3>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                        <h3 style="margin:0">📦 Pedidos por Asignar</h3>
+                        <button onclick="openPedidoModal()" class="btn-sec small">+ Pedido Rápido</button>
+                    </div>
+                    <div id="pendingNotice" style="display:none; padding: 10px; background: rgba(245, 158, 11, 0.1); border: 1px dashed var(--orange); border-radius: 8px; margin-bottom: 15px; text-align: center; color: var(--orange); font-weight: bold; font-size: 0.9rem;"></div>
+                    <div id="listPedidosAdmin" class="grid-list"></div> 
+                </div>
+
+                <!-- SECCIÓN RUTAS ACTIVAS -->
+                <div class="card">
+                    <h3>🚚 Rutas Activas (En Tránsito)</h3>
                     <div id="listRutasActivas" class="grid-list"></div>
                 </div>
             </div>
@@ -75,7 +96,7 @@
                 <div class="card">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
                         <h3 style="margin:0">Mis Rutas Asignadas</h3>
-                        <button onclick="window.open('historial.html', '_blank')" class="btn-sec small">Ver Mi Historial</button>
+                        <button onclick="window.location.href='historial.html'" class="btn-sec small">Ver Mi Historial</button>
                     </div>
                     <div id="listMisRutas" class="grid-list"></div>
                 </div>
@@ -83,6 +104,8 @@
         </main>
     </div>
 
+    <!-- RESTO DE MODALES SE MANTIENEN IGUAL... -->
+    
     <!-- MODAL PEDIDO -->
     <div id="modalPedido" class="modal-overlay">
         <div class="modal-box">
@@ -116,7 +139,7 @@
 
     <!-- MODAL CREAR RUTA -->
     <div id="modalCrearRuta" class="modal-overlay">
-        <div class="modal-box" style="max-width: 600px;">
+        <div class="modal-box" style="max-width: 650px;">
             <h3>Configurar Nueva Ruta</h3>
             <form id="formRutaAdmin">
                 <div class="grid-2">
@@ -130,19 +153,28 @@
                     <div><label>Vehículo</label><select id="rPlaca" onchange="calcRutaAdmin()" required><option value="">Seleccione...</option></select></div>
                     <div><label>Conductor</label><select id="rCond" required><option value="">Seleccione...</option></select></div>
                 </div>
-                <div class="grid-2">
-                    <div><label>Tipo Pago</label><select id="rTipo"><option value="fija">Tarifa Fija</option><option value="variable">Por Kg Entregado</option></select></div>
-                    <div><label>Valor ($)</label><input type="number" id="rValor" placeholder="Ej: 50000" required></div>
-                </div>
-
-                <div style="margin: 15px 0; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px;">
-                    <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
-                        <span>Pedidos: <strong id="selCount">0</strong></span>
-                        <span>Carga: <strong id="selKg">0</strong> Kg</span>
-                    </div>
-                    <div style="display:flex; justify-content:space-between; font-size: 0.85rem; color: #94a3b8;">
-                        <span>Capacidad: <span id="vehCapacidad">---</span> Kg</span>
-                        <span id="overloadWarning" style="color:var(--danger); display:none; font-weight:bold;">⚠️ SOBRECARGA</span>
+                
+                <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; margin-top:10px;">
+                    <h4 style="margin:0 0 10px 0; color:var(--primary); font-size:0.9rem;">Costos y Tarifas</h4>
+                    <div class="grid-2">
+                        <div style="border-right:1px solid #444; padding-right:10px;">
+                            <label style="font-size:0.8rem; color:#ccc;">Pago Conductor</label>
+                            <select id="rTipo" onchange="calcRutaAdmin()">
+                                <option value="fija">Tarifa Fija</option>
+                                <option value="variable">Por Kg</option>
+                            </select>
+                            <input type="number" id="rValor" placeholder="$ Valor" oninput="calcRutaAdmin()" style="margin-top:5px;">
+                            <div style="text-align:right; font-size:0.8rem; margin-top:5px; color:#10b981;">Est: <strong id="calcComision">$0</strong></div>
+                        </div>
+                        <div style="padding-left:10px;">
+                            <label style="font-size:0.8rem; color:#ccc;">Flete (Cobro Cliente)</label>
+                            <select id="rTipoFlete" onchange="calcRutaAdmin()">
+                                <option value="fija">Flete Fijo</option>
+                                <option value="variable">Por Kg</option>
+                            </select>
+                            <input type="number" id="rValorFlete" placeholder="$ Valor" oninput="calcRutaAdmin()" style="margin-top:5px;">
+                            <div style="text-align:right; font-size:0.8rem; margin-top:5px; color:#f59e0b;">Est: <strong id="calcFlete">$0</strong></div>
+                        </div>
                     </div>
                 </div>
 
@@ -183,43 +215,6 @@
             </div>
         </div>
     </div>
-
-    <div id="modalEditRuta" class="modal-overlay">
-        <div class="modal-box">
-            <h3>Editar Ruta</h3>
-            <input type="hidden" id="editRutaId">
-            <div class="grid-2">
-                <div><label>Placa</label><select id="editRutaPlaca"></select></div>
-                <div><label>Conductor</label><select id="editRutaCond"></select></div>
-            </div>
-            <div class="grid-2">
-                <div><label>Tipo Pago</label><select id="editRutaTipo"><option value="fija">Fija</option><option value="variable">Variable</option></select></div>
-                <div><label>Valor ($)</label><input type="number" id="editRutaValor"></div>
-            </div>
-            <div class="modal-footer">
-                <button onclick="closeModal('modalEditRuta')" class="btn-sec">Cancelar</button>
-                <button onclick="submitEditRuta()" class="btn-primary">GUARDAR CAMBIOS</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="modalTicket" class="modal-overlay">
-        <div class="modal-box" style="width: auto; max-width: 400px;">
-            <h3 style="text-align:center;">Vista Previa</h3>
-            <div id="ticketPreviewContent" class="ticket-preview-box"></div>
-            <div class="modal-footer" style="justify-content: center; gap: 10px;">
-                <button onclick="closeModal('modalTicket')" class="btn-sec">Cerrar</button>
-                <button onclick="sendWhatsAppTicket()" class="btn-primary" style="background:#25D366; color:white; border:none; display:flex; align-items:center; gap:5px;">
-                    <i class="fa-brands fa-whatsapp"></i> ENVIAR WA
-                </button>
-                <button onclick="printNow()" class="btn-primary" style="background:white; color:black; border:1px solid black;">🖨️ IMPRIMIR</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="printArea"></div>
-    <datalist id="listClientes"></datalist>
-    <datalist id="listProductos"></datalist>
 
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="app.js"></script>

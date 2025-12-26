@@ -1,432 +1,326 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Historial de Rutas - AGROLLANOS</title>
-<link rel="stylesheet" href="style.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<!-- Librería para capturar el tiquete como imagen -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<style>
-/* Estilos para adaptabilidad móvil del historial */
-.grid-filters-mobile {
-display: grid;
-grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-gap: 10px;
-margin-bottom: 20px;
-background: rgba(255, 255, 255, 0.05);
-padding: 15px;
-border-radius: 8px;
-}
-@media (max-width: 768px) {
-    .grid-filters-mobile { grid-template-columns: 1fr; }
-    
-    /* Transformación de tabla a tarjetas en móviles */
-    table#tableHistory, 
-    table#tableHistory thead, 
-    table#tableHistory tbody, 
-    table#tableHistory th, 
-    table#tableHistory td, 
-    table#tableHistory tr { 
-        display: block; 
-    }
-    
-    table#tableHistory thead tr { 
-        position: absolute;
-        top: -9999px;
-        left: -9999px;
-    }
-    
-    table#tableHistory tr { 
-        border: 1px solid var(--border);
-        margin-bottom: 15px;
-        background: var(--card);
-        border-radius: 8px;
-        padding: 12px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    
-    table#tableHistory td { 
-        border: none;
-        border-bottom: 1px solid rgba(255,255,255,0.05); 
-        position: relative;
-        padding-left: 45%; 
-        text-align: right;
-        min-height: 35px;
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        font-size: 14px;
-    }
-    
-    table#tableHistory td:last-child { border-bottom: none; padding-top: 10px; }
-
-    table#tableHistory td:before { 
-        position: absolute;
-        left: 10px;
-        width: 40%; 
-        white-space: nowrap;
-        text-align: left;
-        font-weight: bold;
-        color: var(--orange);
-        content: attr(data-label);
-    }
-
-    .hist-summary {
-        flex-direction: column;
-        gap: 15px;
-        text-align: center;
-    }
-    
-    .modal-box { width: 95%; padding: 15px; }
-}
-
-.ticket-preview-box {
-    background: white;
-    color: black;
-    font-family: 'Courier New', monospace;
-    padding: 15px;
-    border-radius: 2px;
-    line-height: 1.2;
-}
-
-
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Historial de Rutas - AGROLLANOS</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Librería para capturar imagen -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        .hist-container { max-width: 1000px; margin: 0 auto; padding: 15px; }
+        .filter-bar {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 10px; background: var(--card); padding: 15px;
+            border-radius: 10px; border: 1px solid var(--border); margin-bottom: 20px;
+        }
+        .table-wrapper { background: var(--card); border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+        table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        th { background: rgba(59, 130, 246, 0.1); color: var(--primary); text-align: left; padding: 12px; border-bottom: 2px solid var(--border); }
+        td { padding: 12px; border-bottom: 1px solid var(--border); color: #cbd5e1; }
+        
+        /* Modal Tiquete Pro */
+        .modal-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); justify-content: center; align-items: center;
+            z-index: 10000; padding: 10px;
+        }
+        .modal-box {
+            background: var(--card); border-radius: 15px; width: 100%; max-width: 420px;
+            padding: 20px; border: 1px solid var(--border); box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);
+        }
+        .ticket-capture-area {
+            background: white; padding: 10px; border-radius: 4px; margin: 10px 0;
+        }
+        .ticket-wrapper {
+            background: white; color: black; padding: 15px; border-radius: 2px;
+            font-family: 'Courier New', Courier, monospace;
+            max-height: 60vh; overflow-y: auto; border: 1px solid #ddd;
+        }
+        .actions-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
+        
+        @media (max-width: 768px) {
+            table, thead, tbody, th, td, tr { display: block; }
+            thead tr { position: absolute; top: -9999px; left: -9999px; }
+            tr { margin-bottom: 15px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); padding: 10px; }
+            td { border: none; position: relative; padding-left: 50% !important; text-align: right; min-height: 35px; }
+            td:before { 
+                position: absolute; left: 12px; width: 45%; padding-right: 10px; 
+                text-align: left; font-weight: bold; color: var(--primary); content: attr(data-label); 
+            }
+        }
+    </style>
 </head>
-<body style="padding-top: 20px;">
-<div class="app-container">
-<div class="card">
-<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap: wrap; gap: 10px;">
-<h2 style="margin:0"><i class="fa-solid fa-clock-rotate-left"></i> Historial de Rutas</h2>
-<div style="display:flex; gap:8px;">
-<button onclick="exportHistoryCSV()" class="btn-primary small">📥 Exportar Excel</button>
-<button onclick="window.close()" class="btn-del small">Cerrar Página</button>
-</div>
-</div>
-    <div class="grid-filters-mobile">
-        <div><label>Desde</label><input type="date" id="histIni"></div>
-        <div><label>Hasta</label><input type="date" id="histFin"></div>
-        <div><label>Vehículo</label><select id="histPlaca"><option value="">Todos</option></select></div>
-        <div><label>Conductor</label><select id="histCond"><option value="">Todos</option></select></div>
-    </div>
+<body>
 
-    <div class="table-responsive" style="min-height: 400px;">
-        <table id="tableHistory">
-            <thead>
-                <tr>
-                    <th>Fecha</th>
-                    <th>Ruta</th>
-                    <th>Vehículo</th>
-                    <th>Conductor</th>
-                    <th>Kg Reales</th>
-                    <th>Comisión</th>
-                    <th>Gastos</th>
-                    <th>Total</th>
-                    <th>Foto</th>
-                    <th>Tiquete</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr><td colspan="10" style="text-align:center; padding:50px;">Cargando historial...</td></tr>
-            </tbody>
-        </table>
-    </div>
-
-    <div class="hist-summary" style="margin-top:20px; border-top: 2px solid var(--primary); padding-top:20px; display:flex; justify-content: space-between; align-items: center;">
-        <div>
-            <div class="sum-item">Rutas: <span id="hCount" style="font-weight:bold; color:var(--primary);">0</span></div>
-            <div class="sum-item">Kg Entregados: <span id="hKg" style="font-weight:bold; color:var(--primary);">0</span></div>
+    <header>
+        <div class="brand" style="display: flex; align-items: center; gap: 15px;">
+            <!-- Botón para regresar atrás -->
+            <button onclick="window.location.href='index.html'" class="btn-sec small" style="color: white; border-color: #444;">
+                <i class="fa-solid fa-arrow-left"></i> ATRÁS
+            </button>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <i class="fa-solid fa-house"></i> AGROLLANOS
+            </div>
         </div>
-        <div id="hComision" style="font-weight:bold; color:var(--green); font-size:1.2rem;">$ 0</div>
-        <div style="display:flex; align-items:center; gap:8px;">
-            <button id="btnPrevHist" class="btn-sec small" disabled><i class="fa-solid fa-chevron-left"></i></button>
-            <span id="pageIndicator" style="font-size:0.8rem; font-weight: bold;">Página 1</span>
-            <button id="btnNextHist" class="btn-sec small" disabled><i class="fa-solid fa-chevron-right"></i></button>
+        <div id="userBadge" style="font-size: 0.8rem; background: var(--primary); padding: 4px 10px; border-radius: 20px;">Cargando...</div>
+    </header>
+
+    <div class="hist-container">
+        <div class="filter-bar">
+            <input type="date" id="histIni" onchange="applyFilters()">
+            <input type="date" id="histFin" onchange="applyFilters()">
+            <input type="text" id="histSearch" placeholder="Buscar placa/ruta/conductor..." oninput="applyFilters()">
+            <button onclick="exportDetailedCSV()" class="btn-sec"><i class="fa-solid fa-file-excel"></i> CSV</button>
         </div>
+
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Fecha</th>
+                        <th>Ruta</th>
+                        <th>Vehículo</th>
+                        <th>Conductor</th>
+                        <th>Kg Reales</th>
+                        <th style="text-align: center;">Acción</th>
+                    </tr>
+                </thead>
+                <tbody id="tbodyHistory"></tbody>
+            </table>
+        </div>
+        <div id="noRecords" style="display:none; text-align:center; padding:50px; color:#64748b;">No hay registros disponibles.</div>
     </div>
-</div>
 
-
-</div>
-<!-- MODAL VISTA TIQUETE -->
-<div id="modalTicket" class="modal-overlay" style="display:none;">
-<div class="modal-box" style="max-width: 400px;">
-<h3 style="text-align:center; margin-top:0;">Detalle de Manifiesto</h3>
-<div id="ticketPreviewContent" class="ticket-preview-box"></div>
-<div class="modal-footer" style="justify-content: center; flex-wrap: wrap; gap: 10px; margin-top: 15px;">
-<button onclick="printTicket()" class="btn-primary" style="background:#10b981; flex: 1; min-width: 120px;">🖨️ Imprimir</button>
-<button onclick="downloadTicketImage()" class="btn-primary" style="background:#6366f1; flex: 1; min-width: 120px;">📸 Capturar</button>
-<button onclick="document.getElementById('modalTicket').style.display='none'" class="btn-sec" style="flex: 1; min-width: 120px;">Cerrar</button>
-</div>
-</div>
-</div>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script>
-const user = JSON.parse(localStorage.getItem('sidma_user'));
-let historyData = [];
-let filteredData = [];
-let curPage = 1;
-const itemsPerPage = 10;
-const LOCALE = 'es-CO';
-const TIMEZONE = 'America/Bogota';
-const fmtMoney = new Intl.NumberFormat(LOCALE, { style: 'currency', currency: 'COP', minimumFractionDigits: 0 });
-const fmtNum = new Intl.NumberFormat(LOCALE, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-
-const fmtDate = (iso) => { 
-    if(!iso) return ''; 
-    if(iso.includes('-') && !iso.includes('T')) { 
-        const [y,m,d]=iso.split('-'); return `${d}/${m}/${y}`; 
-    }
-    try { return new Date(iso).toLocaleDateString(LOCALE, { timeZone: TIMEZONE }); } catch { return iso; }
-};
-
-function initDateFilters() {
-    const now = new Date();
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    const toISO = (d) => d.toISOString().split('T')[0];
-    document.getElementById('histIni').value = toISO(firstDay);
-    document.getElementById('histFin').value = toISO(lastDay);
-}
-
-async function loadHistory() {
-    initDateFilters();
-    try {
-        const res = await fetch('/api/historial');
-        historyData = await res.json();
-        
-        const placas = [...new Set(historyData.map(r => r.placa_vehiculo))];
-        const conds = [...new Set(historyData.map(r => r.conductor_asignado))];
-        
-        const sP = document.getElementById('histPlaca');
-        placas.forEach(p => sP.innerHTML += `<option value="${p}">${p}</option>`);
-        const sC = document.getElementById('histCond');
-        conds.forEach(c => sC.innerHTML += `<option value="${c}">${c}</option>`);
-
-        if(user && user.rol === 'conductor') {
-            sC.value = user.nombre;
-            sC.disabled = true;
-        }
-        applyFilters();
-    } catch (e) { console.error(e); }
-}
-
-function applyFilters() {
-    const ini = document.getElementById('histIni').value;
-    const fin = document.getElementById('histFin').value;
-    const placa = document.getElementById('histPlaca').value;
-    const cond = document.getElementById('histCond').value;
-
-    filteredData = historyData.filter(r => {
-        const date = (r.fecha_entrega || r.fecha).split('T')[0];
-        const matchDate = (!ini || date >= ini) && (!fin || date <= fin);
-        const matchPlaca = !placa || r.placa_vehiculo === placa;
-        
-        // FILTRO DE SEGURIDAD POR ROL
-        // Admin y Operador filtran según selector. Conductor solo ve lo suyo.
-        let matchCond = true;
-        if (user.rol === 'conductor') {
-            matchCond = (r.conductor_asignado === user.nombre);
-        } else {
-            matchCond = !cond || r.conductor_asignado === cond;
-        }
-
-        return matchDate && matchPlaca && matchCond;
-    });
-
-    curPage = 1;
-    renderTable();
-}
-
-function renderTable() {
-    const start = (curPage - 1) * itemsPerPage;
-    const pageItems = filteredData.slice(start, start + itemsPerPage);
-    const tbody = document.querySelector('#tableHistory tbody');
-    tbody.innerHTML = '';
-
-    let totalKg = 0; let totalPagos = 0;
-    filteredData.forEach(r => {
-        totalKg += parseFloat(r.total_kg_entregados_real) || 0;
-        totalPagos += parseFloat(r.total_pagar_conductor) || 0;
-    });
-
-    pageItems.forEach(r => {
-        const gastos = JSON.parse(r.gastos_adicionales || '[]');
-        const totalGasto = gastos.reduce((s, g) => s + (parseFloat(g.val) || 0), 0);
-        const kg = parseFloat(r.total_kg_entregados_real) || 0;
-        const total = parseFloat(r.total_pagar_conductor) || 0;
-        const comision = total - totalGasto;
-
-        tbody.innerHTML += `<tr>
-            <td data-label="Fecha">${fmtDate(r.fecha_entrega || r.fecha)}</td>
-            <td data-label="Ruta">${r.nombre_ruta}</td>
-            <td data-label="Vehículo">${r.placa_vehiculo}</td>
-            <td data-label="Conductor">${r.conductor_asignado}</td>
-            <td data-label="Kg Reales">${fmtNum.format(kg)}</td>
-            <td data-label="Comisión">${fmtMoney.format(comision)}</td>
-            <td data-label="Gastos">${fmtMoney.format(totalGasto)}</td>
-            <td data-label="Total"><strong>${fmtMoney.format(total)}</strong></td>
-            <td data-label="Foto">
-                ${r.evidencia_foto ? 
-                    `<button onclick="Swal.fire({imageUrl: '${r.evidencia_foto}', imageAlt: 'Evidencia', showConfirmButton: false})" class="btn-sec small">📸</button>` : '---'}
-            </td>
-            <td data-label="Tiquete"><button onclick="verTicket('${r.id}')" class="btn-sec small">🖨️</button></td>
-        </tr>`;
-    });
-
-    document.getElementById('hCount').innerText = filteredData.length;
-    document.getElementById('hKg').innerText = fmtNum.format(totalKg);
-    document.getElementById('hComision').innerText = fmtMoney.format(totalPagos);
-    
-    const totalPages = Math.ceil(filteredData.length/itemsPerPage) || 1;
-    document.getElementById('pageIndicator').innerText = `Página ${curPage} de ${totalPages}`;
-    document.getElementById('btnPrevHist').disabled = curPage === 1;
-    document.getElementById('btnNextHist').disabled = curPage >= totalPages;
-}
-
-function verTicket(id) {
-    const r = historyData.find(x => String(x.id) === String(id));
-    if(!r) return;
-    
-    const detalles = JSON.parse(r.detalles_clientes_json || '[]');
-    const gastos = JSON.parse(r.gastos_adicionales || '[]');
-    
-    let list = '';
-    detalles.forEach(c => {
-        list += `<div style="border-bottom:1px solid #000; padding:5px 0; margin-top:5px;">
-                    <strong>${c.cliente.toUpperCase()}</strong>
-                    ${c.orden ? ` <span style="font-size:10px;">(Ord: ${c.orden})</span>` : ''}
-                 </div>`;
-        c.productos.forEach(p => {
-            const ent = parseFloat(p.kg_ent) || 0;
-            const plan = parseFloat(p.kg_plan) || 0;
-            const esParcial = ent < plan;
+    <!-- MODAL TIQUETE FINALIZADO -->
+    <div id="modalTicket" class="modal-overlay">
+        <div class="modal-box">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h3 style="margin:0;"><i class="fa-solid fa-receipt"></i> Manifiesto Finalizado</h3>
+                <button onclick="closeModal('modalTicket')" style="background:none; border:none; color:white; font-size:1.5rem; cursor:pointer;">&times;</button>
+            </div>
             
-            list += `<div style="display:flex; justify-content:space-between; font-size:11px; padding: 2px 0;">
-                        <span>- ${p.producto}</span>
-                        <span style="${esParcial ? 'color: red; font-weight: bold;' : ''}">
-                            ${fmtNum.format(ent)} ${esParcial ? `/ ${fmtNum.format(plan)}` : ''} Kg
-                        </span>
-                     </div>`;
-        });
-    });
-
-    let gastosDetalle = '';
-    let totalGasto = 0;
-    if (gastos.length > 0) {
-        gastosDetalle = `<div style="margin-top:10px; border-top: 1px dashed #666; padding-top:5px;">`;
-        gastos.forEach(g => {
-            const val = parseFloat(g.val) || 0;
-            totalGasto += val;
-            gastosDetalle += `<div style="display:flex; justify-content:space-between; font-size:10px; color: #555;">
-                                <span>   • ${g.desc}:</span><span>${fmtMoney.format(val)}</span>
-                              </div>`;
-        });
-        gastosDetalle += `</div>`;
-    }
-
-    const totalPagado = parseFloat(r.total_pagar_conductor) || 0;
-    const comisionRuta = totalPagado - totalGasto;
-
-    document.getElementById('ticketPreviewContent').innerHTML = `
-        <div style="text-align:center;">
-            <h2 style="margin:0;">AGROLLANOS</h2>
-            <p style="margin:0; font-size:10px;">MANIFIESTO FINALIZADO #${r.id.toString().slice(-4)}</p>
-        </div>
-        <div style="font-size:11px; margin-top:10px;">
-            <div style="display:flex; justify-content:space-between;"><span>Fecha Ent:</span><span>${fmtDate(r.fecha_entrega || r.fecha)}</span></div>
-            <div style="display:flex; justify-content:space-between;"><span>Conductor:</span><strong>${r.conductor_asignado}</strong></div>
-            <div style="display:flex; justify-content:space-between;"><span>Placa:</span><span>${r.placa_vehiculo}</span></div>
-            <div style="display:flex; justify-content:space-between;"><span>Ruta:</span><span>${r.nombre_ruta}</span></div>
-        </div>
-        <hr style="border-top:1px dashed #000; margin:8px 0;">
-        ${list}
-        <hr style="border-top:1px solid #000; margin:8px 0;">
-        <div style="display:flex; justify-content:space-between; font-weight:bold; font-size:13px;">
-            <span>TOTAL CARGA REAL:</span><span>${fmtNum.format(r.total_kg_entregados_real)} Kg</span>
-        </div>
-        
-        ${r.observaciones ? `<div style="font-size:10px; margin-top:8px; background:#f8fafc; padding:8px; border-left: 3px solid var(--orange); color: #334155;"><strong>Observaciones:</strong> ${r.observaciones}</div>` : ''}
-
-        <div style="margin-top:10px; padding-top:5px; border-top:1px solid #eee;">
-            <div style="display:flex; justify-content:space-between; font-size:11px;">
-                <span>Comisión Ruta:</span><span>${fmtMoney.format(comisionRuta)}</span>
+            <div id="ticketCaptureArea" class="ticket-capture-area">
+                <div id="ticketPreviewContent" class="ticket-wrapper"></div>
             </div>
-            ${gastosDetalle}
-            <div style="display:flex; justify-content:space-between; color:green; font-weight:bold; font-size:14px; margin-top:5px; border-top:1px double #000; padding-top:3px;">
-                <span>PAGO TOTAL:</span><span>${fmtMoney.format(totalPagado)}</span>
+
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <button onclick="sendWhatsAppTicket()" class="btn-primary" style="background:#22c55e; border:none; width:100%;">
+                    <i class="fa-brands fa-whatsapp"></i> ENVIAR A WHATSAPP
+                </button>
+                <div class="actions-grid">
+                    <button onclick="printNow()" class="btn-sec" style="color:white; border-color:var(--border);">
+                        <i class="fa-solid fa-print"></i> IMPRIMIR
+                    </button>
+                    <button onclick="downloadTicketImage()" class="btn-sec" style="color:white; border-color:var(--border);">
+                        <i class="fa-solid fa-image"></i> CAPTURAR
+                    </button>
+                </div>
+                <button onclick="closeModal('modalTicket')" class="btn-del" style="width:100%; margin-top:5px;">CERRAR</button>
             </div>
         </div>
-    `;
-    document.getElementById('modalTicket').style.display = 'flex';
-}
+    </div>
 
-function printTicket() {
-    const content = document.getElementById('ticketPreviewContent').innerHTML;
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write(`<html><head><style>body{font-family:'Courier New',monospace;width:76mm;padding:2mm;font-size:12px;}hr{border:none;border-top:1px dashed black;margin:8px 0;}</style></head><body onload=\"window.print();window.close();\">${content}</body></html>`);
+    <script>
+        const user = JSON.parse(localStorage.getItem('sidma_user'));
+        let historyData = [];
+        let currentTicketRoute = null;
 
+        const LOCALE = 'es-CO';
+        const fmtMoney = new Intl.NumberFormat(LOCALE, { style: 'currency', currency: 'COP', minimumFractionDigits: 0 });
+        const fmtNum = new Intl.NumberFormat(LOCALE, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 
-    printWindow.document.close();
-}
+        async function loadHistory() {
+            if(!user) { window.location.href = 'index.html'; return; }
+            document.getElementById('userBadge').textContent = `${user.nombre} (${user.rol.toUpperCase()})`;
 
-async function downloadTicketImage() {
-    const ticketElement = document.getElementById('ticketPreviewContent');
-    Swal.fire({title: 'Generando...', allowOutsideClick: false, didOpen: () => Swal.showLoading()});
-    try {
-        const canvas = await html2canvas(ticketElement, {scale: 2, backgroundColor: "#ffffff"});
-        const link = document.createElement('a');
-        link.download = `tiquete_agrollanos_${Date.now()}.png`;
-        link.href = canvas.toDataURL('image/png');
-        link.click();
-        Swal.close();
-    } catch (error) { Swal.fire('Error', 'No se pudo generar imagen', 'error'); }
-}
+            try {
+                const res = await fetch('/api/historial');
+                const raw = await res.json();
+                
+                let processed = raw.map(r => {
+                    let item = {};
+                    for(let k in r) item[k.toLowerCase().trim()] = r[k];
+                    try { item.detalles = JSON.parse(item.detalles_clientes_json); } catch { item.detalles = []; }
+                    try { item.gastos = JSON.parse(item.gastos_adicionales); } catch { item.gastos = []; }
+                    return item;
+                });
 
-/**
- * Exportación mejorada a CSV con todos los campos numéricos detallados
- */
-function exportHistoryCSV() {
-    let csv = "\uFEFFID;Fecha;Ruta;Placa;Conductor;Kg Planificados;Kg Entregados;Tarifa;Comision;Gastos;Total Pago;Observaciones\n";
-    filteredData.forEach(r => {
-        const gastos = JSON.parse(r.gastos_adicionales || '[]');
-        const totalGasto = gastos.reduce((s, g) => s + (parseFloat(g.val) || 0), 0);
-        const kgEnt = parseFloat(r.total_kg_entregados_real) || 0;
-        const kgPlan = parseFloat(r.total_kg_ruta) || 0;
-        const total = parseFloat(r.total_pagar_conductor) || 0;
-        const comision = total - totalGasto;
-        const tarifa = parseFloat(r.valor_tarifa) || 0;
+                if(user.rol === 'conductor') {
+                    processed = processed.filter(r => r.conductor_asignado === user.nombre);
+                }
 
-        const row = [
-            r.id,
-            fmtDate(r.fecha_entrega || r.fecha),
-            r.nombre_ruta,
-            r.placa_vehiculo,
-            r.conductor_asignado,
-            kgPlan,
-            kgEnt,
-            tarifa,
-            comision,
-            totalGasto,
-            total,
-            (r.observaciones || "").replace(/;/g, ",").replace(/\n/g, " ")
-        ];
-        csv += row.join(";") + "\n";
-    });
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `historial_detallado_agrollanos_${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
-}
+                historyData = processed.sort((a, b) => new Date(b.fecha_entrega || b.fecha) - new Date(a.fecha_entrega || a.fecha));
+                applyFilters();
+            } catch (e) { console.error("Error cargando historial:", e); }
+        }
 
-window.onload = loadHistory;
-document.getElementById('btnPrevHist').onclick = () => { if(curPage > 1) { curPage--; renderTable(); } };
-document.getElementById('btnNextHist').onclick = () => { if(curPage < Math.ceil(filteredData.length/itemsPerPage)) { curPage++; renderTable(); } };
-document.querySelectorAll('input, select').forEach(el => el.onchange = applyFilters);
+        function applyFilters() {
+            const ini = document.getElementById('histIni').value;
+            const fin = document.getElementById('histFin').value;
+            const search = document.getElementById('histSearch').value.toLowerCase();
 
+            const filtered = historyData.filter(r => {
+                const dateStr = (r.fecha_entrega || r.fecha || '').split('T')[0];
+                const matchDate = (!ini || dateStr >= ini) && (!fin || dateStr <= fin);
+                const matchSearch = !search || 
+                    (r.placa_vehiculo || '').toLowerCase().includes(search) || 
+                    (r.nombre_ruta || '').toLowerCase().includes(search) ||
+                    (r.conductor_asignado || '').toLowerCase().includes(search);
+                return matchDate && matchSearch;
+            });
 
-</script>
+            renderTable(filtered);
+        }
+
+        function renderTable(data) {
+            const tbody = document.getElementById('tbodyHistory');
+            const noRec = document.getElementById('noRecords');
+            tbody.innerHTML = '';
+            if(data.length === 0) { noRec.style.display = 'block'; return; }
+            noRec.style.display = 'none';
+
+            data.forEach(r => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td data-label="ID">#${String(r.id).slice(-4)}</td>
+                    <td data-label="Fecha">${new Date(r.fecha_entrega || r.fecha).toLocaleDateString()}</td>
+                    <td data-label="Ruta"><strong>${r.nombre_ruta || '--'}</strong></td>
+                    <td data-label="Vehículo">${r.placa_vehiculo || '--'}</td>
+                    <td data-label="Conductor">${r.conductor_asignado || '--'}</td>
+                    <td data-label="Kg Reales">${fmtNum.format(r.total_kg_entregados_real || 0)} Kg</td>
+                    <td data-label="Acción" style="text-align: center;">
+                        <button onclick="viewTicket('${r.id}')" class="btn-sec" style="padding: 5px 12px; font-size: 0.8rem;">
+                            <i class="fa-solid fa-eye"></i> VER
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function viewTicket(id) {
+            const r = historyData.find(x => String(x.id) === String(id));
+            if(!r) return;
+            currentTicketRoute = r;
+
+            let prodsHTML = '';
+            (r.detalles || []).forEach(c => {
+                prodsHTML += `<div style="margin-top:8px; border-bottom:1px solid #eee; padding-bottom:4px;">
+                    <strong>${c.cliente.toUpperCase()}</strong> (Ord: ${c.orden || 'S/N'})<br>`;
+                (c.productos || []).forEach(p => {
+                    prodsHTML += `<div style="display:flex; justify-content:space-between; font-size:11px;">
+                        <span>- ${p.producto}</span><span>${fmtNum.format(p.kg_ent || p.kg_plan)} Kg</span>
+                    </div>`;
+                });
+                prodsHTML += `</div>`;
+            });
+
+            const tar = parseFloat(r.valor_tarifa) || 0;
+            const kgEnt = parseFloat(r.total_kg_entregados_real) || 0;
+            const comision = (r.tipo_comision === 'variable') ? (kgEnt * tar) : tar;
+            const totalGastos = (r.gastos || []).reduce((acc, g) => acc + (parseFloat(g.val) || 0), 0);
+            const totalPago = parseFloat(r.total_pagar_conductor) || (comision + totalGastos);
+
+            // Preparar el HTML de la foto si existe
+            let evidenciaHTML = r.evidencia_foto ? `
+                <div style="margin-top:15px; text-align:center; border-top:1px dashed #000; padding-top:10px;">
+                    <div style="font-size:10px; margin-bottom:5px;"><b>EVIDENCIA FOTOGRÁFICA:</b></div>
+                    <img src="${r.evidencia_foto}" style="max-width:100%; border-radius:4px; border:1px solid #ddd;">
+                </div>
+            ` : '';
+
+            document.getElementById('ticketPreviewContent').innerHTML = `
+                <div style="text-align:center;"><h2 style="margin:0">AGROLLANOS</h2><p style="margin:2px 0; font-size:10px;">NIT: 900.000.000-1</p></div>
+                <hr style="border:none; border-top:1px dashed #000;">
+                <div style="font-size:11px;">
+                    <b>MANIFIESTO:</b> #${String(r.id).slice(-4)}<br>
+                    <b>FECHA CIERRE:</b> ${new Date(r.fecha_entrega || r.fecha).toLocaleString()}<br>
+                    <b>RUTA:</b> ${r.nombre_ruta}<br>
+                    <b>CONDUCTOR:</b> ${r.conductor_asignado}<br>
+                    <b>PLACA:</b> ${r.placa_vehiculo}
+                </div>
+                <hr style="border:none; border-top:1px dashed #000;">
+                ${prodsHTML}
+                <div style="margin-top:10px; font-size:12px; font-weight:bold; display:flex; justify-content:space-between;">
+                    <span>TOTAL CARGA:</span><span>${fmtNum.format(kgEnt)} Kg</span>
+                </div>
+                <hr style="border:none; border-top:1px dashed #000;">
+                <div style="font-size:11px;">
+                    <div style="display:flex; justify-content:space-between;"><span>Comisión:</span><span>${fmtMoney.format(comision)}</span></div>
+                    <div style="display:flex; justify-content:space-between;"><span>Gastos:</span><span>${fmtMoney.format(totalGastos)}</span></div>
+                    <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:bold; margin-top:5px;">
+                        <span>TOTAL PAGO:</span><span>${fmtMoney.format(totalPago)}</span>
+                    </div>
+                </div>
+                ${evidenciaHTML}
+                <div style="margin-top:15px; text-align:center; font-size:9px; color:#666;">--- DOCUMENTO FINALIZADO ---</div>
+            `;
+            document.getElementById('modalTicket').style.display = 'flex';
+        }
+
+        window.closeModal = (id) => document.getElementById(id).style.display = 'none';
+
+        window.downloadTicketImage = () => {
+            const area = document.getElementById('ticketCaptureArea');
+            if(!area) return;
+
+            Swal.fire({ title: 'Generando imagen...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
+            
+            setTimeout(() => {
+                html2canvas(area, { 
+                    scale: 3, 
+                    backgroundColor: "#ffffff",
+                    logging: false,
+                    useCORS: true
+                }).then(canvas => {
+                    const link = document.createElement('a');
+                    link.download = `Tiquete_Cierre_${String(currentTicketRoute.id).slice(-4)}.png`;
+                    link.href = canvas.toDataURL("image/png");
+                    link.click();
+                    Swal.close();
+                    // Cerrar vista previa automáticamente tras captura
+                    closeModal('modalTicket');
+                }).catch(err => {
+                    console.error("Error captura:", err);
+                    Swal.fire('Error', 'No se pudo generar la imagen', 'error');
+                });
+            }, 500);
+        };
+
+        window.printNow = () => {
+            const content = document.getElementById('ticketPreviewContent').innerHTML;
+            const printWindow = window.open('', '_blank', 'width=400,height=600');
+            printWindow.document.write(`<html><head><style>body{width:76mm;margin:0;padding:5mm;font-family:monospace;font-size:12px;color:black;}h2{text-align:center;margin:0;}hr{border:none;border-top:1px dashed black;margin:5px 0;}img{max-width:100%;}</style></head><body onload="window.print();window.close();">${content}</body></html>`);
+            printWindow.document.close();
+        };
+
+        window.sendWhatsAppTicket = () => {
+            const r = currentTicketRoute;
+            let msg = `*AGROLLANOS - MANIFIESTO #${String(r.id).slice(-4)}*\n`;
+            msg += `📅 Fecha Cierre: ${new Date(r.fecha_entrega || r.fecha).toLocaleDateString()}\n`;
+            msg += `📍 Ruta: ${r.nombre_ruta}\n`;
+            msg += `⚖️ Total Real: ${fmtNum.format(r.total_kg_entregados_real)} Kg\n`;
+            msg += `💰 Pago Conductor: ${fmtMoney.format(r.total_pagar_conductor)}\n`;
+            window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
+        };
+
+        function exportDetailedCSV() {
+            let csv = "ID;Fecha;Ruta;Vehiculo;Conductor;Kg Reales;Total Pago\n";
+            historyData.forEach(r => {
+                csv += `${r.id};${new Date(r.fecha_entrega || r.fecha).toLocaleDateString()};${r.nombre_ruta};${r.placa_vehiculo};${r.conductor_asignado};${r.total_kg_entregados_real};${r.total_pagar_conductor}\n`;
+            });
+            const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = "Historial_Agrollanos.csv";
+            link.click();
+        }
+
+        window.onload = loadHistory;
+    </script>
 </body>
 </html>
