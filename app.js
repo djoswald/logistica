@@ -714,7 +714,7 @@ window.openTicket = (id) => {
                 const v = parseFloat(g.val) || 0;
                 totalGastos += v;
                 gastosDetalle += `<div style="display:flex; justify-content:space-between; font-size:10px; color:#666;">
-                    <span>    > ${g.desc}:</span><span>${fmtMoney.format(v)}</span>
+                    <span>   > ${g.desc}:</span><span>${fmtMoney.format(v)}</span>
                 </div>`;
             });
         }
@@ -766,7 +766,7 @@ window.sendWhatsAppTicket = () => {
     let msg = `*AGROLLANOS - MANIFIESTO #${r.id.toString().slice(-4)}*\n`;
     msg += `📅 *Fecha Salida:* ${fmtDate(r.fecha || r.fecha_entrega)}\n`;
     msg += `⏰ *Hora Cargue:* ${fmtTime(r.hora || r.hora_entrega)}\n`;
-    msg += `👤 *Conductor:* ${r.conductor_asignado}\n`;
+    msg += `🛞 *Conductor:* ${r.conductor_asignado}\n`;
     msg += `🚛 *Placa:* ${r.placa_vehiculo}\n`;
     msg += `📍 *Ruta:* ${r.nombre_ruta}\n`;
     
@@ -810,10 +810,39 @@ window.sendWhatsAppTicket = () => {
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
 };
 
+window.printNow = () => {
+    const content = document.getElementById('ticketPreviewContent').innerHTML;
+    const printWindow = window.open('', '_blank', 'width=400,height=600');
+    printWindow.document.write(`
+        <html>
+        <head>
+            <style>
+                @page { margin: 0; }
+                body { 
+                    width: 76mm; 
+                    margin: 0; 
+                    padding: 5mm; 
+                    font-family: 'Courier New', Courier, monospace; 
+                    font-size: 13px; 
+                    color: black;
+                }
+                h2 { text-align: center; font-size: 16px; margin: 0; }
+                p { text-align: center; font-size: 11px; margin: 2px 0; }
+                hr { border: none; border-top: 1px dashed black; margin: 10px 0; }
+                strong { font-weight: bold; }
+            </style>
+        </head>
+        <body onload="window.print(); window.close();">
+            ${content}
+        </body>
+        </html>
+    `);
+    printWindow.document.close();
+};
+
 // --- UTILIDADES ---
 window.closeModal = (id) => document.getElementById(id).style.display='none';
 window.logout = () => { localStorage.removeItem('sidma_user'); location.reload(); };
-window.printNow = () => window.print();
 
 window.borrarPedido = async (e, id) => {
     if(isProcessingAction) return;
