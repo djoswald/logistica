@@ -10,7 +10,7 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.static('.'));
 
-// Configuración de Carpetas para evidencias
+// Configuración de Carpetas
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
 app.use('/uploads', express.static(uploadDir));
@@ -23,6 +23,7 @@ const upload = multer({ storage: multer.diskStorage({
 // --- HELPER ACTUALIZACIÓN ---
 async function safeUpdate(sheet, id, changes) {
     const rows = await sheetsDB.readSheet(sheet);
+    // MEJORA: Usamos trim() para ignorar espacios accidentales al comparar IDs
     const index = rows.findIndex(r => String(r.id).trim() === String(id).trim());
     if (index === -1) throw new Error('No encontrado');
     const updatedRow = { ...rows[index], ...changes };
@@ -30,59 +31,51 @@ async function safeUpdate(sheet, id, changes) {
     return updatedRow;
 }
 
-// --- LOGIN ---
+// --- RUTAS API ---
+
 app.post('/api/login', async (req, res) => {
+    const { user, pass } = req.body;
     try {
         const users = await sheetsDB.readSheet('Usuarios');
-        const user = users.find(u => u.usuario === req.body.user && String(u.password) === String(req.body.pass));
-        if (user) res.json({ user });
-        else res.status(401).json({ error: 'Credenciales inválidas' });
+        const found = users.find(u => String(u.usuario).trim().toLowerCase() === String(user).trim().toLowerCase() && String(u.password).trim() === String(pass).trim());
+        if (found) res.json({ success: true, user: { nombre: found.nombre, rol: found.rol.toLowerCase().trim() } });
+        else res.status(401).json({ success: false });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// --- DATA INICIAL ---
 app.get('/api/data', async (req, res) => {
     try {
-        const [pedidos, despachos, vehiculos, usuarios] = await Promise.all([
-            sheetsDB.readSheet('Pedidos'),
+        const [despachos, pedidos, vehiculos, usuarios] = await Promise.all([
             sheetsDB.readSheet('Despachos'),
+            sheetsDB.readSheet('Pedidos'),
             sheetsDB.readSheet('Vehiculos'),
             sheetsDB.readSheet('Usuarios')
         ]);
-        const conductores = usuarios.filter(u => (u.rol || '').trim().toLowerCase() === 'conductor');
-        res.json({ pedidos, despachos, vehiculos, conductores });
+        const conductores = usuarios.filter(u => u.rol.toLowerCase().trim() === 'conductor');
+        const pedidosPendientes = pedidos.filter(p => p.estado === 'Pendiente');
+        res.json({ despachos: despachos.reverse(), pedidos: pedidosPendientes, vehiculos, conductores }); 
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// --- REPORTE FLETES ---
-app.get('/api/reporte_fletes', async (req, res) => {
-    try {
-        const data = await sheetsDB.readSheet('Reporte_Fletes');
-        res.json(data);
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// --- HISTORIAL ---
 app.get('/api/historial', async (req, res) => {
     try {
-        const hist = await sheetsDB.readSheet('Historial_Rutas');
-        res.json(hist);
+        const historial = await sheetsDB.readSheet('Historial_Rutas');
+        res.json(historial.reverse());
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// --- PEDIDOS (CRUD COMPLETO) ---
+// --- OPERADOR: PEDIDOS ---
 app.post('/api/pedidos', async (req, res) => {
     try {
-        const prodString = req.body.productos_json || (typeof req.body.productos === 'string' ? req.body.productos : JSON.stringify(req.body.productos));
-        const nuevo = { 
-            id: Date.now().toString(),
-            Fecha: req.body.fecha,
-            Hora: req.body.hora,
-            Cliente: req.body.cliente,
-            Orden: req.body.orden,
-            Productos: prodString,
-            Observaciones: req.body.observaciones,
-            Estado: 'Pendiente'
+        const nuevo = {
+            id: Date.now(),
+            fecha: req.body.fecha,
+            hora: req.body.hora,
+            cliente: req.body.cliente,
+            orden: req.body.orden,
+            productos_json: req.body.productos,
+            observaciones: req.body.observaciones,
+            estado: 'Pendiente'
         };
         await sheetsDB.appendRow('Pedidos', nuevo);
         res.json({ success: true });
@@ -91,12 +84,14 @@ app.post('/api/pedidos', async (req, res) => {
 
 app.put('/api/pedidos/:id', async (req, res) => {
     try {
-        const cambios = { ...req.body };
-        if(cambios.productos || cambios.Productos) {
-            const p = cambios.productos || cambios.Productos;
-            const pStr = typeof p === 'string' ? p : JSON.stringify(p);
-            cambios.Productos = pStr;
-        }
+        const cambios = {
+            fecha: req.body.fecha,
+            hora: req.body.hora,
+            cliente: req.body.cliente,
+            orden: req.body.orden,
+            productos_json: req.body.productos,
+            observaciones: req.body.observaciones
+        };
         await safeUpdate('Pedidos', req.params.id, cambios);
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -109,107 +104,78 @@ app.delete('/api/pedidos/:id', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// --- RUTAS / DESPACHOS (CON REPORTE DE FLETES DETALLADO) ---
+// --- ADMIN: RUTAS (Crear con Backup y Borrar Restaurando) ---
+
 app.post('/api/crear_ruta', async (req, res) => {
     try {
-        const rutaId = Date.now().toString();
-        
-        // Backup para restaurar pedidos si se anula la ruta
-        const backupPedidos = req.body.pedidos_full.map(p => ({ 
-            id: p.id, 
-            estado_previo: 'Pendiente',
-            productos_backup: p.productos_json || JSON.stringify(p.productos) 
-        }));
+        // VALIDACIÓN: No crear ruta si no hay respaldo de pedidos
+        if (!req.body.pedidos_full || !Array.isArray(req.body.pedidos_full) || req.body.pedidos_full.length === 0) {
+            throw new Error("Error: No se pudo generar el respaldo de los pedidos. Intente de nuevo.");
+        }
 
+        // 1. Guardar Ruta con BACKUP de pedidos en la columna 'pedidos_backup_json'
         const nuevaRuta = {
-            id: rutaId,
+            id: Date.now(),
+            fecha_entrega: req.body.fecha,
+            hora_entrega: req.body.hora,
             nombre_ruta: req.body.nombre_ruta,
-            fecha: req.body.fecha,
-            hora: req.body.hora,
+            detalles_clientes_json: req.body.detalles,
+            total_kg_ruta: req.body.total_kg,
+            observaciones: req.body.observaciones,
             placa_vehiculo: req.body.placa,
             conductor_asignado: req.body.conductor,
             tipo_comision: req.body.tipo_comision,
             valor_tarifa: req.body.valor_tarifa,
-            total_conductor_estimado: req.body.total_conductor_estimado,
-            tipo_flete: req.body.tipo_flete,
-            valor_flete: req.body.valor_flete,
-            total_flete_estimado: req.body.total_flete_estimado,
-            total_kg_ruta: req.body.total_kg,
-            estado: 'Asignada',
-            detalles_clientes_json: req.body.detalles,
-            pedidos_backup_json: JSON.stringify(backupPedidos),
-            observaciones: req.body.observaciones
+            pedidos_backup_json: JSON.stringify(req.body.pedidos_full), // Guardamos el backup aquí
+            estado: 'Asignada'
         };
-
         await sheetsDB.appendRow('Despachos', nuevaRuta);
 
-        // --- REGISTRO DETALLADO EN REPORTE_FLETES ---
-        if (req.body.pedidos_full) {
-            const totalKgRuta = parseFloat(req.body.total_kg) || 1; 
-
-            for (const p of req.body.pedidos_full) {
-                // Actualizar estado del pedido a "En Ruta"
-                await safeUpdate('Pedidos', p.id, { Estado: 'En Ruta' });
-                
-                const pesoPedido = parseFloat(p.total_kg) || 0;
-                
-                // Cálculo proporcional del flete y pago según el peso de cada pedido
-                let costoFlete = (req.body.tipo_flete === 'variable') 
-                    ? (pesoPedido * req.body.valor_flete) 
-                    : (pesoPedido / totalKgRuta) * req.body.valor_flete;
-                    
-                let costoCond = (req.body.tipo_comision === 'variable') 
-                    ? (pesoPedido * req.body.valor_tarifa) 
-                    : (pesoPedido / totalKgRuta) * req.body.valor_tarifa;
-
-                const registroReporte = {
-                    id: `${rutaId}_${p.id}`,
-                    id_ruta: rutaId,
-                    fecha: req.body.fecha,
-                    cliente: p.cliente,
-                    orden: p.orden,
-                    peso_kg: pesoPedido,
-                    tipo_flete: req.body.tipo_flete,
-                    valor_base_flete: req.body.valor_flete,
-                    costo_flete_total: Math.round(costoFlete),
-                    tipo_pago_cond: req.body.tipo_comision,
-                    valor_base_cond: req.body.valor_tarifa,
-                    pago_conductor_estimado: Math.round(costoCond),
-                    observaciones: p.observaciones || ''
-                };
-                await sheetsDB.appendRow('Reporte_Fletes', registroReporte);
-            }
+        // 2. Limpiar la hoja 'Pedidos'
+        const pedidosABorrar = req.body.pedidos_full;
+        for (const p of pedidosABorrar) {
+            await sheetsDB.deleteRow('Pedidos', p.id).catch(e => console.log('Error borrando pedido:', p.id));
         }
+
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// --- BORRAR RUTA (RESTAURA PEDIDOS Y LIMPIA REPORTES) ---
 app.delete('/api/borrar_ruta/:id', async (req, res) => {
     try {
+        // 1. Leer ruta para recuperar backup (Busca por ID exacto)
         const rows = await sheetsDB.readSheet('Despachos');
-        const rutaData = rows.find(r => String(r.id).trim() === String(req.params.id).trim());
+        const ruta = rows.find(r => String(r.id).trim() === String(req.params.id).trim());
 
-        if(rutaData && rutaData.pedidos_backup_json) {
-            const pedidosBackup = JSON.parse(rutaData.pedidos_backup_json);
-            for (const pBackup of pedidosBackup) {
-                await safeUpdate('Pedidos', pBackup.id, { Estado: 'Pendiente' });
-            }
+        if (!ruta) {
+            return res.status(404).json({ error: "Ruta no encontrada para borrar" });
         }
 
-        // Limpieza de reportes de fletes asociados a esta ruta
-        const reportes = await sheetsDB.readSheet('Reporte_Fletes');
-        const reportesABorrar = reportes.filter(r => String(r.id_ruta).trim() === String(req.params.id).trim());
-        for (const item of reportesABorrar) {
-            await sheetsDB.deleteRow('Reporte_Fletes', item.id);
+        // 2. Restaurar Pedidos usando la columna 'pedidos_backup_json' (No importa si es la col 2, solo importa el nombre del encabezado)
+        if (ruta.pedidos_backup_json) {
+            try {
+                const pedidosRestaurar = JSON.parse(ruta.pedidos_backup_json);
+                if (Array.isArray(pedidosRestaurar)) {
+                    for (const p of pedidosRestaurar) {
+                        p.estado = 'Pendiente'; 
+                        await sheetsDB.appendRow('Pedidos', p);
+                    }
+                }
+            } catch (e) { console.error('Error restaurando backup:', e); }
         }
 
-        await sheetsDB.deleteRow('Despachos', req.params.id);
+        // 3. Eliminar ruta usando el ID original (Requiere ID en Columna 1 del Excel)
+        const deleteResult = await sheetsDB.deleteRow('Despachos', ruta.id);
+        
+        if (deleteResult && deleteResult.error) {
+            throw new Error("Error DB al borrar: " + deleteResult.error);
+        }
+
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// --- FINALIZAR RUTA (AÑADE A HISTORIAL Y ELIMINA DE ACTIVAS) ---
+// --- CONDUCTOR: FINALIZAR ---
 app.put('/api/finalizar/:id', upload.single('foto'), async (req, res) => {
     try {
         const cambios = {
@@ -221,16 +187,28 @@ app.put('/api/finalizar/:id', upload.single('foto'), async (req, res) => {
         };
         if (req.file) cambios.evidencia_foto = `/uploads/${req.file.filename}`;
         
+        // 1. ACTUALIZAR y 2. COPIAR a Historial
         const itemActualizado = await safeUpdate('Despachos', req.params.id, cambios);
-        
-        // Mover registro al historial
         await sheetsDB.appendRow('Historial_Rutas', itemActualizado);
         
-        // Eliminar de rutas activas
+        // 3. BORRAR de Despachos
         await sheetsDB.deleteRow('Despachos', itemActualizado.id);
 
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.listen(PORT, () => console.log(`Servidor activo en puerto ${PORT}`));
+app.put('/api/editar_ruta/:id', async (req, res) => {
+    try {
+        const cambios = {
+            placa_vehiculo: req.body.placa,
+            conductor_asignado: req.body.conductor,
+            tipo_comision: req.body.tipo_comision,
+            valor_tarifa: req.body.valor_tarifa
+        };
+        await safeUpdate('Despachos', req.params.id, cambios);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.listen(PORT, () => console.log(`Servidor Logístico en puerto ${PORT}`));
