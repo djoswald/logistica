@@ -762,52 +762,56 @@ window.sendWhatsAppTicket = () => {
     if (!currentTicketRoute) return;
     const r = currentTicketRoute;
     const esFinalizada = (r.estado === 'Finalizada' || r.fecha_entrega);
-    
+
     let msg = `*AGROLLANOS - MANIFIESTO #${r.id.toString().slice(-4)}*\n`;
     msg += `📅 *Fecha Salida:* ${fmtDate(r.fecha || r.fecha_entrega)}\n`;
     msg += `⏰ *Hora Cargue:* ${fmtTime(r.hora || r.hora_entrega)}\n`;
     msg += `🛞 *Conductor:* ${r.conductor_asignado}\n`;
     msg += `🚛 *Placa:* ${r.placa_vehiculo}\n`;
     msg += `📍 *Ruta:* ${r.nombre_ruta}\n`;
-    
+
     msg += `\n*DETALLE DE CARGA:*\n`;
-    
-    r.detalles.forEach(c => { 
-        msg += `• *${c.cliente.toUpperCase()}* - Ord: ${c.orden || 'S/N'}\n`; 
+
+    r.detalles.forEach(c => {
+        msg += `• *${c.cliente.toUpperCase()}* - Ord: ${c.orden || 'S/N'}\n`;
         if (c.observaciones) msg += `   _(Obs: ${c.observaciones})_\n`;
-        
-        c.productos.forEach(p => { 
-            const kgEnt = p.kg_ent !== undefined ? p.kg_ent : p.kg_plan;
-            const kgPlan = p.kg_plan_orig || p.kg_plan;
-            
+
+        c.productos.forEach(p => {
+            const kgEnt = p.kg_ent ?? p.kg_plan;
+            const kgPlan = p.kg_plan_orig ?? p.kg_plan;
+
             if (esFinalizada && kgEnt < kgPlan) {
                 msg += `   - ${p.producto}: *${fmtNum.format(kgEnt)}* / ${fmtNum.format(kgPlan)} Kg (PARCIAL)\n`;
             } else {
-                msg += `   - ${p.producto}: ${fmtNum.format(parseFloat(kgEnt))} Kg\n`; 
+                msg += `   - ${p.producto}: ${fmtNum.format(kgEnt)} Kg\n`;
             }
-        }); 
+        });
     });
-    
+
     msg += `\n📦 *Total:* ${fmtNum.format(r.total_kg_entregados_real || r.total_kg_ruta)} Kg\n`;
 
-    if (r.observaciones) msg += `📝 *Observaciones:* ${r.observaciones}\n`;
-    
+    if (r.observaciones) {
+        msg += `📝 *Observaciones:* ${r.observaciones}\n`;
+    }
+
     if (esFinalizada) {
         const kgReal = parseFloat(r.total_kg_entregados_real) || 0;
         const tarifa = parseFloat(r.valor_tarifa) || 0;
-        const comision = (r.tipo_comision === 'variable') ? (kgReal * tarifa) : tarifa;
-        let tGastos = 0;
-        if (r.gastos) r.gastos.forEach(g => tGastos += parseFloat(g.val)||0);
-        
-        msg += `\n\n*RESUMEN PAGO CONDUCTOR:*`;
-        msg += `\n💰 Comisión: ${fmtMoney.format(comision)}`;
-        if (r.gastos && r.gastos.length > 0) {
-            msg += `\n⛽ Gastos: ${fmtMoney.format(tGastos)}`;
+        const comision = (r.tipo_comision === 'variable') ? kgReal * tarifa : tarifa;
+
+        let totalGastos = 0;
+        if (Array.isArray(r.gastos)) {
+            r.gastos.forEach(g => totalGastos += parseFloat(g.val) || 0);
         }
-        msg += `\n✅ *TOTAL:* ${fmtMoney.format(comision + tGastos)}`;
+
+        msg += `\n*RESUMEN PAGO CONDUCTOR:*\n`;
+        msg += `💰 Comisión: ${fmtMoney.format(comision)}\n`;
+        if (totalGastos > 0) msg += `⛽ Gastos: ${fmtMoney.format(totalGastos)}\n`;
+        msg += `✅ *TOTAL:* ${fmtMoney.format(comision + totalGastos)}\n`;
     }
-    
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+
+    const url = `https://wa.me/?text=${encodeURIComponent(msg)}`;
+    window.open(url, '_blank');
 };
 
 // --- UTILIDADES ---
@@ -918,4 +922,5 @@ window.submitEditRuta = async () => {
     } finally {
         isProcessingAction = false;
     }
+
 };
